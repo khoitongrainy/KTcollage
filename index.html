@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aesthetic Collage & Story Generator</title>
+  <title>KT Collage — Aesthetic Story Collage Generator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,800;1,400&family=Space+Mono&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
           </svg>
         </div>
         <div class="brand-text">
-          <h1>CollageStudio</h1>
+          <h1>KT Collage</h1>
           <span class="badge">Editorial Multi-Card Story Generator</span>
         </div>
       </div>
@@ -44,7 +44,7 @@
             <line x1="15" y1="15" x2="21" y2="21"/>
             <line x1="4" y1="4" x2="9" y2="9"/>
           </svg>
-          Shuffle All Layouts
+          Shuffle All
         </button>
         <button id="btn-export-zip" class="btn btn-primary" title="Export all cards as High-Res PNG in a ZIP">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -52,16 +52,16 @@
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          Export All Cards (ZIP)
+          Export All (ZIP)
         </button>
       </div>
     </header>
 
     <!-- Main Workspace -->
     <div class="workspace">
-      <!-- Left Sidebar: Controls & Photos -->
+      <!-- Left Sidebar -->
       <aside class="sidebar">
-        <!-- Upload Section -->
+        <!-- Upload -->
         <div class="panel upload-panel">
           <div class="upload-dropzone" id="dropzone">
             <input type="file" id="file-input" multiple accept="image/*" class="file-input-hidden">
@@ -81,14 +81,31 @@
               <span id="photo-count-badge">0 photos loaded</span>
               <button id="btn-clear-photos" class="btn-link">Clear all</button>
             </div>
-            <!-- Thumbnail strip -->
             <div class="thumbnails-container" id="thumbnail-strip"></div>
+            <p class="panel-hint">Tip: drag a thumbnail onto any frame to move it there.</p>
           </div>
         </div>
 
-        <!-- Style / Theme Presets (Matching user's screenshot: CLASICO, PAPER, ZODIAC, NOIR, MINIMAL) -->
+        <!-- Template collection -->
         <div class="panel">
-          <h3 class="panel-title">Aesthetic Theme</h3>
+          <h3 class="panel-title">Collage Style Collection</h3>
+          <div class="control-row">
+            <label for="select-collection">Templates</label>
+            <select id="select-collection" class="select-input">
+              <option value="auto" selected>Auto Mix (Classico + Cover)</option>
+              <option value="Classico">Classico</option>
+              <option value="Editorial">Editorial</option>
+              <option value="Film">Film</option>
+              <option value="Polaroid">Polaroid</option>
+              <option value="Minimal">Minimal</option>
+            </select>
+          </div>
+          <p class="panel-hint">Click the <b>+</b> on any card to browse every template for that card.</p>
+        </div>
+
+        <!-- Theme -->
+        <div class="panel">
+          <h3 class="panel-title">Color Theme</h3>
           <div class="theme-pill-selector" id="theme-selector">
             <button class="theme-pill active" data-theme="clasico">Clasico</button>
             <button class="theme-pill" data-theme="paper">Paper</button>
@@ -99,7 +116,7 @@
           </div>
         </div>
 
-        <!-- Format & Sizing -->
+        <!-- Format -->
         <div class="panel">
           <h3 class="panel-title">Story Format</h3>
           <div class="aspect-ratio-selector" id="ratio-selector">
@@ -122,7 +139,7 @@
           </div>
         </div>
 
-        <!-- Auto-Distribution Strategy -->
+        <!-- Distribution -->
         <div class="panel">
           <h3 class="panel-title">Layout Distribution</h3>
           <div class="control-row">
@@ -135,7 +152,7 @@
               <option value="5">5 Photos per card</option>
             </select>
           </div>
-          
+
           <div class="control-row" style="margin-top: 10px;">
             <label for="toggle-orientation-match">Match Orientation</label>
             <label class="switch">
@@ -143,7 +160,7 @@
               <span class="switch-slider"></span>
             </label>
           </div>
-          <p class="panel-hint">Vertical photos ↕ automatically map to vertical frames; horizontal ↔ to horizontal frames.</p>
+          <p class="panel-hint">Vertical photos ↕ go to vertical frames; horizontal ↔ to horizontal frames.</p>
 
           <div class="control-row" style="margin-top: 10px;">
             <label for="select-fit-mode">Photo Fit Mode</label>
@@ -154,16 +171,16 @@
           </div>
         </div>
 
-        <!-- Spacing & Styling sliders -->
+        <!-- Spacing -->
         <div class="panel">
           <h3 class="panel-title">Spacing & Aesthetics</h3>
-          
+
           <div class="slider-group">
             <div class="slider-header">
               <label for="slider-gap">Photo Gap</label>
               <span id="val-gap" class="slider-val">12px</span>
             </div>
-            <input type="range" id="slider-gap" min="0" max="36" value="12" class="range-slider">
+            <input type="range" id="slider-gap" min="0" max="40" value="12" class="range-slider">
           </div>
 
           <div class="slider-group">
@@ -171,7 +188,7 @@
               <label for="slider-margin">Outer Padding</label>
               <span id="val-margin" class="slider-val">20px</span>
             </div>
-            <input type="range" id="slider-margin" min="0" max="60" value="20" class="range-slider">
+            <input type="range" id="slider-margin" min="0" max="80" value="20" class="range-slider">
           </div>
 
           <div class="slider-group">
@@ -179,18 +196,18 @@
               <label for="slider-radius">Corner Radius</label>
               <span id="val-radius" class="slider-val">4px</span>
             </div>
-            <input type="range" id="slider-radius" min="0" max="30" value="4" class="range-slider">
+            <input type="range" id="slider-radius" min="0" max="40" value="4" class="range-slider">
           </div>
 
           <div class="slider-group">
             <div class="slider-header">
-              <label for="slider-bg">Card Background</label>
+              <label for="picker-bg">Card Background</label>
               <input type="color" id="picker-bg" value="#ffffff" class="color-picker-input">
             </div>
           </div>
         </div>
 
-        <!-- Editorial Typography Options -->
+        <!-- Typography -->
         <div class="panel">
           <div class="panel-title-with-toggle">
             <h3 class="panel-title">Editorial Typography</h3>
@@ -202,33 +219,37 @@
           <div class="typography-fields" id="typography-controls">
             <div class="field-item">
               <label for="input-kicker">Italic Subheader</label>
-              <input type="text" id="input-kicker" value="adventuring in" class="text-input" placeholder="e.g. adventuring in, chapter one">
+              <input type="text" id="input-kicker" value="adventuring in" class="text-input" placeholder="e.g. adventuring in">
             </div>
             <div class="field-item">
               <label for="input-headline">Main Headline</label>
-              <input type="text" id="input-headline" value="MEMORIES" class="text-input" placeholder="e.g. IRELAND, SUMMER 2026">
+              <input type="text" id="input-headline" value="MEMORIES" class="text-input" placeholder="e.g. IRELAND">
             </div>
             <div class="field-item">
-              <label for="input-body">Journal Note</label>
+              <label for="input-body">Journal Note / Caption</label>
               <textarea id="input-body" class="text-area" rows="2" placeholder="Short story text...">The past couple of days have been a dream. Cherishing every quiet moment.</textarea>
+            </div>
+            <div class="field-item">
+              <label for="input-date">Date Line</label>
+              <input type="text" id="input-date" value="" class="text-input" placeholder="e.g. NOVEMBER 2026">
             </div>
           </div>
         </div>
 
-        <!-- Export Resolution -->
+        <!-- Export -->
         <div class="panel">
           <h3 class="panel-title">Export Settings</h3>
           <div class="control-row">
             <label for="export-scale">Quality Resolution</label>
             <select id="export-scale" class="select-input">
               <option value="1">Standard (1080px wide)</option>
-              <option value="2" selected>Ultra Crisp 2X (2160px Retina)</option>
+              <option value="2" selected>Ultra Crisp 2X (2160px)</option>
             </select>
           </div>
         </div>
       </aside>
 
-      <!-- Center Preview Canvas Area -->
+      <!-- Preview Area -->
       <main class="preview-area">
         <div class="preview-toolbar">
           <div class="toolbar-left">
@@ -240,13 +261,28 @@
             <button class="nav-btn" id="btn-next-card" title="Next card">›</button>
           </div>
           <div class="toolbar-right">
-            <button class="btn btn-sm btn-secondary" id="btn-shuffle-current" title="Shuffle this card's layout">
+            <div class="zoom-controls disabled" id="zoom-controls" title="Select a photo in a card to zoom it">
+              <span class="zoom-label">Photo zoom</span>
+              <button class="zoom-btn" id="btn-zoom-out" title="Zoom out">−</button>
+              <input type="range" id="zoom-range" min="100" max="500" value="100" class="range-slider zoom-range">
+              <button class="zoom-btn" id="btn-zoom-in" title="Zoom in">+</button>
+              <span class="zoom-value" id="zoom-value">100%</span>
+              <button class="zoom-btn zoom-reset" id="btn-zoom-reset" title="Reset zoom & position">Reset</button>
+            </div>
+            <button class="btn btn-sm btn-secondary" id="btn-open-templates" title="Browse all templates for this card">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+              </svg>
+              Templates
+            </button>
+            <button class="btn btn-sm btn-secondary" id="btn-shuffle-current" title="Next layout for this card">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="16 3 21 3 21 8"/>
                 <line x1="4" y1="20" x2="21" y2="3"/>
                 <polyline points="21 16 21 21 16 21"/>
               </svg>
-              Shuffle Layout
+              Shuffle
             </button>
             <button class="btn btn-sm btn-secondary" id="btn-download-current" title="Download this card as PNG">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -254,27 +290,52 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Export This Card
+              Export Card
             </button>
           </div>
         </div>
 
-        <!-- Cards Viewport: Side-by-side Carousel / Grid Mode -->
-        <div class="cards-deck-wrapper" id="deck-wrapper">
-          <div class="cards-deck" id="cards-deck">
-            <!-- Dynamic story card canvases inserted here -->
-          </div>
+        <div class="interaction-hint">
+          <b>Drag</b> inside a photo to reposition · <b>drag it onto another frame</b> (any card) to swap · <b>scroll / pinch</b> to zoom · <b>double-click</b> to reset
         </div>
 
-        <!-- Bottom Gallery Carousel Navigation of all cards -->
-        <div class="story-strip" id="story-strip">
-          <!-- Mini thumbnails of each card -->
+        <div class="cards-deck-wrapper" id="deck-wrapper">
+          <div class="cards-deck" id="cards-deck"></div>
         </div>
+
+        <div class="story-strip" id="story-strip"></div>
       </main>
     </div>
   </div>
 
-  <!-- Notification Toast -->
+  <!-- Template Gallery Modal -->
+  <div class="modal-backdrop" id="template-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h3 id="tm-title">Templates</h3>
+          <p class="modal-sub">Pick a style for this card. Changing the photo count borrows/returns photos from the next card.</p>
+        </div>
+        <button class="modal-close" id="tm-close" title="Close">×</button>
+      </div>
+      <div class="tm-controls">
+        <div class="tm-row">
+          <span class="tm-row-label">Photos</span>
+          <div class="tm-counts" id="tm-counts"></div>
+        </div>
+        <div class="tm-row">
+          <span class="tm-row-label">Style</span>
+          <div class="tm-collections" id="tm-collections"></div>
+        </div>
+      </div>
+      <div class="tm-grid" id="tm-grid"></div>
+      <div class="modal-footer" id="tm-footer">
+        <button class="btn btn-secondary" id="tm-apply-all" style="display:none;">Apply this style to all cards</button>
+        <button class="btn btn-primary" id="tm-done">Done</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
 
   <script src="app.js"></script>

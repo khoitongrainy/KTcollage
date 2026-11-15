@@ -1,25 +1,33 @@
 /**
- * CollageStudio - Aesthetic Multi-Card Story Generator
- * Features Intelligent Orientation Matching (Vertical in vertical frames, Horizontal in horizontal frames).
+ * KT Collage — Editorial Story & Collage Generator
+ * Complete Unfold / Classico template collection, cross-card drag-and-drop, and per-photo zoom.
  */
 
 // Application State
 const state = {
-  photos: [], // Array of { id, img, dataUrl, name, width, height, aspect, orientation, panX, panY }
-  cards: [],  // Array of { id, photoIds: [], slotAssignments: [], layoutId, size }
+  photos: [], // Array of { id, img, dataUrl, name, width, height, aspect, orientation }
+  cards: [],  // Array of { id, photoIds: [], layoutId, slotTransforms: [{ zoom, panX, panY }] }
   activeCardIndex: 0,
+  selectedSlot: null, // { cardIndex, slotIndex }
   dragState: {
-    isDragging: false,
-    cardIndex: -1,
-    slotIndex: -1,
+    active: false,
+    mode: null, // 'pan' or 'swap'
+    fromCardIndex: -1,
+    fromSlotIndex: -1,
+    fromPhotoId: null,
     startX: 0,
     startY: 0,
+    currentX: 0,
+    currentY: 0,
+    hoverCardIndex: -1,
+    hoverSlotIndex: -1,
     initialPanX: 0,
     initialPanY: 0
   },
   settings: {
     theme: 'clasico',
     aspectRatio: '9:16',
+    collection: 'auto',
     gap: 12,
     margin: 20,
     radius: 4,
@@ -31,11 +39,12 @@ const state = {
     kicker: 'adventuring in',
     headline: 'MEMORIES',
     bodyText: 'The past couple of days have been a dream. Cherishing every quiet moment.',
+    dateLine: '',
     exportScale: 2
   }
 };
 
-// Aesthetic Theme Palettes
+// Theme Palettes
 const THEMES = {
   clasico: {
     name: 'Clasico',
@@ -45,20 +54,17 @@ const THEMES = {
     border: 'rgba(0,0,0,0.06)',
     fontTitle: '"Cormorant Garamond", "Didot", "Playfair Display", Georgia, serif',
     fontBody: '"Plus Jakarta Sans", -apple-system, sans-serif',
-    accent: '#111111',
-    hasFilmBorder: false,
-    hasPaperTexture: false
+    accent: '#111111'
   },
   paper: {
     name: 'Paper',
     bg: '#f6f2e9',
     textMain: '#2b2620',
     textMuted: '#7c7365',
-    border: 'rgba(100,80,50,0.12)',
+    border: 'rgba(100,80,50,0.14)',
     fontTitle: '"Cormorant Garamond", Georgia, serif',
     fontBody: '"Plus Jakarta Sans", sans-serif',
     accent: '#4a3f35',
-    hasFilmBorder: false,
     hasPaperTexture: true
   },
   noir: {
@@ -69,21 +75,18 @@ const THEMES = {
     border: 'rgba(255,255,255,0.12)',
     fontTitle: '"Cormorant Garamond", "Playfair Display", serif',
     fontBody: '"Plus Jakarta Sans", sans-serif',
-    accent: '#ffffff',
-    hasFilmBorder: false,
-    hasPaperTexture: false
+    accent: '#ffffff'
   },
   film: {
     name: 'Film 35mm',
-    bg: '#181818',
+    bg: '#161616',
     textMain: '#f0ece1',
     textMuted: '#c59b27',
     border: '#2a2a2a',
     fontTitle: '"Space Mono", monospace',
     fontBody: '"Space Mono", monospace',
     accent: '#e69500',
-    hasFilmBorder: true,
-    hasPaperTexture: false
+    hasFilmBorder: true
   },
   warm: {
     name: 'Warm Terra',
@@ -93,9 +96,7 @@ const THEMES = {
     border: 'rgba(54,43,40,0.12)',
     fontTitle: '"Playfair Display", serif',
     fontBody: '"Plus Jakarta Sans", sans-serif',
-    accent: '#8b4513',
-    hasFilmBorder: false,
-    hasPaperTexture: false
+    accent: '#8b4513'
   },
   minimal: {
     name: 'Minimalist',
@@ -105,13 +106,10 @@ const THEMES = {
     border: 'transparent',
     fontTitle: '"Plus Jakarta Sans", sans-serif',
     fontBody: '"Plus Jakarta Sans", sans-serif',
-    accent: '#000000',
-    hasFilmBorder: false,
-    hasPaperTexture: false
+    accent: '#000000'
   }
 };
 
-// Aspect Ratio Dimensions (Internal base rendering resolution: 1080 base)
 const DIMENSIONS = {
   '9:16': { width: 1080, height: 1920, previewWidth: 320, previewHeight: 568 },
   '4:5':  { width: 1080, height: 1350, previewWidth: 320, previewHeight: 400 },
@@ -120,248 +118,343 @@ const DIMENSIONS = {
 };
 
 /**
- * Editorial Layout Catalog
- * Each layout defines slots [ { x, y, w, h } ] and its intended orientation character:
- * - 'vertical' (for all portrait photos)
- * - 'horizontal' (for all landscape photos)
- * - 'mixed' (mixed horizontal + vertical slots)
+ * Comprehensive Unfold & Classico Template Catalog
+ * Organized by Photo Count (1–6) with collections: Classico, Editorial, Film, Polaroid, Minimal
  */
-const LAYOUT_CATALOG = {
-  // 1 Photo layouts
-  1: [
-    {
-      id: '1-vert-hero',
-      name: 'Full Hero Portrait',
-      type: 'vertical',
-      slots: [{ x: 0, y: 0, w: 1, h: 1 }]
-    },
-    {
-      id: '1-horiz-centered',
-      name: 'Horizontal Landscape Frame',
-      type: 'horizontal',
-      slots: [{ x: 0, y: 0.22, w: 1, h: 0.56 }]
-    },
-    {
-      id: '1-polaroid-vert',
-      name: 'Polaroid Single',
-      type: 'vertical',
-      slots: [{ x: 0.08, y: 0.06, w: 0.84, h: 0.74 }],
-      hasCaption: true,
-      captionBox: { x: 0.08, y: 0.82, w: 0.84, h: 0.14 }
-    }
-  ],
+const TEMPLATE_CATALOG = [
+  // ---------- 1 PHOTO ----------
+  {
+    id: 'cs-01-hero',
+    name: 'CS1 Full Hero',
+    collection: 'Classico',
+    count: 1,
+    type: 'vertical',
+    slots: [{ x: 0, y: 0, w: 1, h: 1 }]
+  },
+  {
+    id: 'cs-01-framed',
+    name: 'CS1 Museum Frame',
+    collection: 'Classico',
+    count: 1,
+    type: 'vertical',
+    slots: [{ x: 0.08, y: 0.06, w: 0.84, h: 0.78 }],
+    hasEditorialText: true,
+    textBox: { x: 0.08, y: 0.86, w: 0.84, h: 0.10 }
+  },
+  {
+    id: 'cs-01-polaroid',
+    name: 'Polaroid Classic',
+    collection: 'Polaroid',
+    count: 1,
+    type: 'vertical',
+    isPolaroid: true,
+    slots: [{ x: 0.08, y: 0.08, w: 0.84, h: 0.70 }],
+    hasEditorialText: true,
+    textBox: { x: 0.08, y: 0.81, w: 0.84, h: 0.13 }
+  },
+  {
+    id: 'fl-01-contact',
+    name: 'Film 35mm Single',
+    collection: 'Film',
+    count: 1,
+    type: 'vertical',
+    isFilm: true,
+    slots: [{ x: 0.08, y: 0.10, w: 0.84, h: 0.80 }]
+  },
 
-  // 2 Photos layouts
-  2: [
-    {
-      id: '2-vert-side-by-side',
-      name: '2 Vertical Portraits (Side by Side)',
-      type: 'vertical',
-      slots: [
-        { x: 0, y: 0.06, w: 0.49, h: 0.88 },
-        { x: 0.51, y: 0.06, w: 0.49, h: 0.88 }
-      ]
-    },
-    {
-      id: '2-vert-staggered',
-      name: '2 Vertical Portraits (Staggered)',
-      type: 'vertical',
-      slots: [
-        { x: 0.04, y: 0.04, w: 0.52, h: 0.54 },
-        { x: 0.44, y: 0.42, w: 0.52, h: 0.54 }
-      ]
-    },
-    {
-      id: '2-horiz-split',
-      name: '2 Horizontal Landscapes (Split)',
-      type: 'horizontal',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.49 },
-        { x: 0, y: 0.51, w: 1, h: 0.49 }
-      ]
-    },
-    {
-      id: '2-mixed-1h-1v',
-      name: 'Top Landscape + Bottom Portrait',
-      type: 'mixed',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.40 },          // slot 0: horizontal
-        { x: 0.12, y: 0.44, w: 0.76, h: 0.56 }   // slot 1: vertical
-      ]
-    },
-    {
-      id: '2-editorial-story',
-      name: 'Editorial Article (Screenshot Style)',
-      type: 'mixed',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.38 },          // slot 0: landscape
-        { x: 0.14, y: 0.65, w: 0.72, h: 0.35 }   // slot 1: vertical portrait
-      ],
-      hasEditorialText: true,
-      textBox: { x: 0.06, y: 0.40, w: 0.88, h: 0.22 }
-    }
-  ],
+  // ---------- 2 PHOTOS ----------
+  {
+    id: 'cs-02-side-by-side',
+    name: 'CS2 Twin Vertical (Side-by-Side)',
+    collection: 'Classico',
+    count: 2,
+    type: 'vertical',
+    slots: [
+      { x: 0, y: 0.06, w: 0.49, h: 0.88 },
+      { x: 0.51, y: 0.06, w: 0.49, h: 0.88 }
+    ]
+  },
+  {
+    id: 'cs-02-split-horizontal',
+    name: 'CS2 Dual Landscape (Split)',
+    collection: 'Classico',
+    count: 2,
+    type: 'horizontal',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.49 },
+      { x: 0, y: 0.51, w: 1, h: 0.49 }
+    ]
+  },
+  {
+    id: 'cs-02-editorial-story',
+    name: 'CS2 Editorial Article (Screenshot Style)',
+    collection: 'Editorial',
+    count: 2,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.38 },          // horizontal landscape
+      { x: 0.14, y: 0.65, w: 0.72, h: 0.35 }   // vertical portrait
+    ],
+    hasEditorialText: true,
+    textBox: { x: 0.06, y: 0.40, w: 0.88, h: 0.23 }
+  },
+  {
+    id: 'cs-02-staggered',
+    name: 'CS2 Staggered Diptych',
+    collection: 'Classico',
+    count: 2,
+    type: 'vertical',
+    slots: [
+      { x: 0.04, y: 0.04, w: 0.54, h: 0.54 },
+      { x: 0.42, y: 0.42, w: 0.54, h: 0.54 }
+    ]
+  },
+  {
+    id: 'pl-02-duo',
+    name: 'Polaroid Duo',
+    collection: 'Polaroid',
+    count: 2,
+    type: 'vertical',
+    isPolaroid: true,
+    slots: [
+      { x: 0.10, y: 0.05, w: 0.80, h: 0.42 },
+      { x: 0.10, y: 0.52, w: 0.80, h: 0.42 }
+    ]
+  },
 
-  // 3 Photos layouts
-  3: [
-    {
-      id: '3-vert-columns',
-      name: '3 Vertical Portraits (Triptych Columns)',
-      type: 'vertical',
-      slots: [
-        { x: 0, y: 0.08, w: 0.315, h: 0.84 },
-        { x: 0.342, y: 0.08, w: 0.315, h: 0.84 },
-        { x: 0.685, y: 0.08, w: 0.315, h: 0.84 }
-      ]
-    },
-    {
-      id: '3-vert-center-hero',
-      name: 'Center Portrait Hero + 2 Flank Portraits',
-      type: 'vertical',
-      slots: [
-        { x: 0.23, y: 0.05, w: 0.54, h: 0.90 },  // center large vertical
-        { x: 0, y: 0.18, w: 0.21, h: 0.64 },     // left small vertical
-        { x: 0.79, y: 0.18, w: 0.21, h: 0.64 }   // right small vertical
-      ]
-    },
-    {
-      id: '3-mixed-1h-2v',
-      name: '1 Top Landscape + 2 Bottom Portraits',
-      type: 'mixed',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.38 },          // slot 0: horizontal
-        { x: 0, y: 0.40, w: 0.49, h: 0.60 },    // slot 1: vertical
-        { x: 0.51, y: 0.40, w: 0.49, h: 0.60 }  // slot 2: vertical
-      ]
-    },
-    {
-      id: '3-mixed-2v-1h',
-      name: '2 Top Portraits + 1 Bottom Landscape',
-      type: 'mixed',
-      slots: [
-        { x: 0, y: 0, w: 0.49, h: 0.60 },       // slot 0: vertical
-        { x: 0.51, y: 0, w: 0.49, h: 0.60 },     // slot 1: vertical
-        { x: 0, y: 0.62, w: 1, h: 0.38 }         // slot 2: horizontal
-      ]
-    },
-    {
-      id: '3-horiz-strips',
-      name: '3 Stacked Landscapes (Screenshot Style)',
-      type: 'horizontal',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.32 },
-        { x: 0, y: 0.34, w: 1, h: 0.32 },
-        { x: 0, y: 0.68, w: 1, h: 0.32 }
-      ]
-    }
-  ],
+  // ---------- 3 PHOTOS ----------
+  {
+    id: 'cs-03-horizontal-strips',
+    name: 'CS3 3 Horizontal Strips (Screenshot Style)',
+    collection: 'Classico',
+    count: 3,
+    type: 'horizontal',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.32 },
+      { x: 0, y: 0.34, w: 1, h: 0.32 },
+      { x: 0, y: 0.68, w: 1, h: 0.32 }
+    ]
+  },
+  {
+    id: 'cs-03-columns',
+    name: 'CS3 3 Vertical Columns (Triptych)',
+    collection: 'Classico',
+    count: 3,
+    type: 'vertical',
+    slots: [
+      { x: 0, y: 0.06, w: 0.315, h: 0.88 },
+      { x: 0.342, y: 0.06, w: 0.315, h: 0.88 },
+      { x: 0.685, y: 0.06, w: 0.315, h: 0.88 }
+    ]
+  },
+  {
+    id: 'cs-03-mixed-top-hero',
+    name: 'CS3 1 Top Landscape + 2 Portraits',
+    collection: 'Classico',
+    count: 3,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.40 },
+      { x: 0, y: 0.42, w: 0.49, h: 0.58 },
+      { x: 0.51, y: 0.42, w: 0.49, h: 0.58 }
+    ]
+  },
+  {
+    id: 'cs-03-mixed-bottom-hero',
+    name: 'CS3 2 Portraits + 1 Bottom Landscape',
+    collection: 'Classico',
+    count: 3,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 0.49, h: 0.58 },
+      { x: 0.51, y: 0, w: 0.49, h: 0.58 },
+      { x: 0, y: 0.60, w: 1, h: 0.40 }
+    ]
+  },
+  {
+    id: 'ed-03-flank',
+    name: 'Editorial Center Hero + 2 Flanks',
+    collection: 'Editorial',
+    count: 3,
+    type: 'vertical',
+    slots: [
+      { x: 0.22, y: 0.04, w: 0.56, h: 0.92 },
+      { x: 0, y: 0.16, w: 0.20, h: 0.68 },
+      { x: 0.80, y: 0.16, w: 0.20, h: 0.68 }
+    ]
+  },
+  {
+    id: 'fl-03-strips',
+    name: 'Film 3-Frame Strip',
+    collection: 'Film',
+    count: 3,
+    type: 'horizontal',
+    isFilm: true,
+    slots: [
+      { x: 0.06, y: 0.05, w: 0.88, h: 0.28 },
+      { x: 0.06, y: 0.36, w: 0.88, h: 0.28 },
+      { x: 0.06, y: 0.67, w: 0.88, h: 0.28 }
+    ]
+  },
 
-  // 4 Photos layouts
-  4: [
-    {
-      id: '4-vert-grid-2x2',
-      name: '2x2 Portrait Grid (Vertical Friendly)',
-      type: 'vertical',
-      slots: [
-        { x: 0, y: 0, w: 0.49, h: 0.49 },       // in 9:16, aspect is 0.56 (portrait!)
-        { x: 0.51, y: 0, w: 0.49, h: 0.49 },
-        { x: 0, y: 0.51, w: 0.49, h: 0.49 },
-        { x: 0.51, y: 0.51, w: 0.49, h: 0.49 }
-      ]
-    },
-    {
-      id: '4-vert-hero-3-bottom',
-      name: 'Hero Portrait + 3 Thumbnails (Screenshot Style)',
-      type: 'vertical',
-      slots: [
-        { x: 0.05, y: 0.04, w: 0.90, h: 0.58 }, // large portrait/square
-        { x: 0.03, y: 0.68, w: 0.30, h: 0.28 }, // 3 portrait thumbnails
-        { x: 0.35, y: 0.68, w: 0.30, h: 0.28 },
-        { x: 0.67, y: 0.68, w: 0.30, h: 0.28 }
-      ]
-    },
-    {
-      id: '4-vert-columns',
-      name: '4 Vertical Strip Portraits',
-      type: 'vertical',
-      slots: [
-        { x: 0, y: 0.08, w: 0.235, h: 0.84 },
-        { x: 0.255, y: 0.08, w: 0.235, h: 0.84 },
-        { x: 0.51, y: 0.08, w: 0.235, h: 0.84 },
-        { x: 0.765, y: 0.08, w: 0.235, h: 0.84 }
-      ]
-    },
-    {
-      id: '4-mixed-1h-3v',
-      name: 'Top Landscape + 3 Portrait Columns',
-      type: 'mixed',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.40 },          // slot 0: horizontal
-        { x: 0, y: 0.43, w: 0.315, h: 0.57 },   // slots 1-3: vertical
-        { x: 0.342, y: 0.43, w: 0.315, h: 0.57 },
-        { x: 0.685, y: 0.43, w: 0.315, h: 0.57 }
-      ]
-    },
-    {
-      id: '4-horiz-strips',
-      name: '4 Horizontal Strips (Landscapes Only)',
-      type: 'horizontal',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.235 },
-        { x: 0, y: 0.255, w: 1, h: 0.235 },
-        { x: 0, y: 0.51, w: 1, h: 0.235 },
-        { x: 0, y: 0.765, w: 1, h: 0.235 }
-      ]
-    }
-  ],
+  // ---------- 4 PHOTOS ----------
+  {
+    id: 'cs-04-grid-2x2',
+    name: 'CS4 2x2 Balanced Portrait Grid',
+    collection: 'Classico',
+    count: 4,
+    type: 'vertical',
+    slots: [
+      { x: 0, y: 0, w: 0.49, h: 0.49 },
+      { x: 0.51, y: 0, w: 0.49, h: 0.49 },
+      { x: 0, y: 0.51, w: 0.49, h: 0.49 },
+      { x: 0.51, y: 0.51, w: 0.49, h: 0.49 }
+    ]
+  },
+  {
+    id: 'cs-04-hero-3-bottom',
+    name: 'CS4 Hero + 3 Thumbnails (Screenshot Style)',
+    collection: 'Classico',
+    count: 4,
+    type: 'vertical',
+    slots: [
+      { x: 0.05, y: 0.03, w: 0.90, h: 0.58 },
+      { x: 0.03, y: 0.67, w: 0.30, h: 0.30 },
+      { x: 0.35, y: 0.67, w: 0.30, h: 0.30 },
+      { x: 0.67, y: 0.67, w: 0.30, h: 0.30 }
+    ]
+  },
+  {
+    id: 'cs-04-mixed-1h-3v',
+    name: 'CS4 Top Landscape + 3 Columns',
+    collection: 'Classico',
+    count: 4,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.40 },
+      { x: 0, y: 0.42, w: 0.315, h: 0.58 },
+      { x: 0.342, y: 0.42, w: 0.315, h: 0.58 },
+      { x: 0.685, y: 0.42, w: 0.315, h: 0.58 }
+    ]
+  },
+  {
+    id: 'cs-04-columns',
+    name: 'CS4 4 Vertical Columns',
+    collection: 'Classico',
+    count: 4,
+    type: 'vertical',
+    slots: [
+      { x: 0, y: 0.06, w: 0.235, h: 0.88 },
+      { x: 0.255, y: 0.06, w: 0.235, h: 0.88 },
+      { x: 0.51, y: 0.06, w: 0.235, h: 0.88 },
+      { x: 0.765, y: 0.06, w: 0.235, h: 0.88 }
+    ]
+  },
+  {
+    id: 'cs-04-horizontal-strips',
+    name: 'CS4 4 Horizontal Strips (Landscapes)',
+    collection: 'Classico',
+    count: 4,
+    type: 'horizontal',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.235 },
+      { x: 0, y: 0.255, w: 1, h: 0.235 },
+      { x: 0, y: 0.51, w: 1, h: 0.235 },
+      { x: 0, y: 0.765, w: 1, h: 0.235 }
+    ]
+  },
+  {
+    id: 'ed-04-asymmetric',
+    name: 'Editorial 1 Large + 3 Stacked Column',
+    collection: 'Editorial',
+    count: 4,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 0.58, h: 1 },
+      { x: 0.60, y: 0, w: 0.40, h: 0.32 },
+      { x: 0.60, y: 0.34, w: 0.40, h: 0.32 },
+      { x: 0.60, y: 0.68, w: 0.40, h: 0.32 }
+    ]
+  },
 
-  // 5 Photos layouts
-  5: [
-    {
-      id: '5-mixed-1h-4grid',
-      name: 'Hero Top + 4 Grid (Screenshot Top Right)',
-      type: 'mixed',
-      slots: [
-        { x: 0, y: 0, w: 1, h: 0.42 },          // slot 0: horizontal
-        { x: 0, y: 0.44, w: 0.49, h: 0.27 },    // slots 1-4: portrait/square
-        { x: 0.51, y: 0.44, w: 0.49, h: 0.27 },
-        { x: 0, y: 0.73, w: 0.49, h: 0.27 },
-        { x: 0.51, y: 0.73, w: 0.49, h: 0.27 }
-      ]
-    },
-    {
-      id: '5-vert-mosaic',
-      name: '5 Portrait Mosaic (2 Top + 3 Bottom)',
-      type: 'vertical',
-      slots: [
-        { x: 0, y: 0, w: 0.49, h: 0.48 },
-        { x: 0.51, y: 0, w: 0.49, h: 0.48 },
-        { x: 0, y: 0.51, w: 0.315, h: 0.49 },
-        { x: 0.342, y: 0.51, w: 0.315, h: 0.49 },
-        { x: 0.685, y: 0.51, w: 0.315, h: 0.49 }
-      ]
-    }
-  ],
+  // ---------- 5 PHOTOS ----------
+  {
+    id: 'cs-05-hero-4grid',
+    name: 'CS5 Hero Top + 4 Grid (Screenshot Top Right)',
+    collection: 'Classico',
+    count: 5,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 1, h: 0.42 },
+      { x: 0, y: 0.44, w: 0.49, h: 0.27 },
+      { x: 0.51, y: 0.44, w: 0.49, h: 0.27 },
+      { x: 0, y: 0.73, w: 0.49, h: 0.27 },
+      { x: 0.51, y: 0.73, w: 0.49, h: 0.27 }
+    ]
+  },
+  {
+    id: 'cs-05-mosaic',
+    name: 'CS5 2 Top + 3 Bottom Mosaic',
+    collection: 'Classico',
+    count: 5,
+    type: 'vertical',
+    slots: [
+      { x: 0, y: 0, w: 0.49, h: 0.48 },
+      { x: 0.51, y: 0, w: 0.49, h: 0.48 },
+      { x: 0, y: 0.51, w: 0.315, h: 0.49 },
+      { x: 0.342, y: 0.51, w: 0.315, h: 0.49 },
+      { x: 0.685, y: 0.51, w: 0.315, h: 0.49 }
+    ]
+  },
+  {
+    id: 'ed-05-magazine',
+    name: 'Editorial 5 Spread',
+    collection: 'Editorial',
+    count: 5,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 0.49, h: 0.60 },
+      { x: 0.51, y: 0, w: 0.49, h: 0.30 },
+      { x: 0.51, y: 0.32, w: 0.49, h: 0.28 },
+      { x: 0, y: 0.62, w: 0.49, h: 0.38 },
+      { x: 0.51, y: 0.62, w: 0.49, h: 0.38 }
+    ]
+  },
 
-  // 6 Photos layouts
-  6: [
-    {
-      id: '6-vert-gallery-2x3',
-      name: '2x3 Portrait Gallery',
-      type: 'vertical',
-      slots: [
-        { x: 0, y: 0, w: 0.49, h: 0.32 },
-        { x: 0.51, y: 0, w: 0.49, h: 0.32 },
-        { x: 0, y: 0.34, w: 0.49, h: 0.32 },
-        { x: 0.51, y: 0.34, w: 0.49, h: 0.32 },
-        { x: 0, y: 0.68, w: 0.49, h: 0.32 },
-        { x: 0.51, y: 0.68, w: 0.49, h: 0.32 }
-      ]
-    }
-  ]
-};
+  // ---------- 6 PHOTOS ----------
+  {
+    id: 'cs-06-gallery',
+    name: 'CS6 2x3 Portrait Gallery',
+    collection: 'Classico',
+    count: 6,
+    type: 'vertical',
+    slots: [
+      { x: 0, y: 0, w: 0.49, h: 0.32 },
+      { x: 0.51, y: 0, w: 0.49, h: 0.32 },
+      { x: 0, y: 0.34, w: 0.49, h: 0.32 },
+      { x: 0.51, y: 0.34, w: 0.49, h: 0.32 },
+      { x: 0, y: 0.68, w: 0.49, h: 0.32 },
+      { x: 0.51, y: 0.68, w: 0.49, h: 0.32 }
+    ]
+  },
+  {
+    id: 'mn-06-grid',
+    name: 'Minimal 3x2 Grid',
+    collection: 'Minimal',
+    count: 6,
+    type: 'mixed',
+    slots: [
+      { x: 0, y: 0, w: 0.32, h: 0.49 },
+      { x: 0.34, y: 0, w: 0.32, h: 0.49 },
+      { x: 0.68, y: 0, w: 0.32, h: 0.49 },
+      { x: 0, y: 0.51, w: 0.32, h: 0.49 },
+      { x: 0.34, y: 0.51, w: 0.32, h: 0.49 },
+      { x: 0.68, y: 0.51, w: 0.32, h: 0.49 }
+    ]
+  }
+];
 
-// UI Elements
+// UI Element references
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
 const thumbnailStrip = document.getElementById('thumbnail-strip');
@@ -371,6 +464,7 @@ const btnClearPhotos = document.getElementById('btn-clear-photos');
 const btnLoadSample = document.getElementById('btn-load-sample');
 const btnShuffleAll = document.getElementById('btn-shuffle-all');
 const btnShuffleCurrent = document.getElementById('btn-shuffle-current');
+const btnOpenTemplates = document.getElementById('btn-open-templates');
 const btnExportZip = document.getElementById('btn-export-zip');
 const btnDownloadCurrent = document.getElementById('btn-download-current');
 const btnPrevCard = document.getElementById('btn-prev-card');
@@ -380,7 +474,16 @@ const storyStrip = document.getElementById('story-strip');
 const cardIndicator = document.getElementById('card-indicator');
 const cardsCountInfo = document.getElementById('cards-count-info');
 
-// Theme & Settings
+// Zoom controls
+const zoomControls = document.getElementById('zoom-controls');
+const zoomRange = document.getElementById('zoom-range');
+const zoomValue = document.getElementById('zoom-value');
+const btnZoomIn = document.getElementById('btn-zoom-in');
+const btnZoomOut = document.getElementById('btn-zoom-out');
+const btnZoomReset = document.getElementById('btn-zoom-reset');
+
+// Settings
+const selectCollection = document.getElementById('select-collection');
 const themeSelector = document.getElementById('theme-selector');
 const ratioSelector = document.getElementById('ratio-selector');
 const photosPerCardSelect = document.getElementById('photos-per-card');
@@ -398,33 +501,58 @@ const typographyControls = document.getElementById('typography-controls');
 const inputKicker = document.getElementById('input-kicker');
 const inputHeadline = document.getElementById('input-headline');
 const inputBody = document.getElementById('input-body');
+const inputDate = document.getElementById('input-date');
 const exportScaleSelect = document.getElementById('export-scale');
 const toastEl = document.getElementById('toast');
 
+// Modal Elements
+const templateModal = document.getElementById('template-modal');
+const tmClose = document.getElementById('tm-close');
+const tmDone = document.getElementById('tm-done');
+const tmCounts = document.getElementById('tm-counts');
+const tmCollections = document.getElementById('tm-collections');
+const tmGrid = document.getElementById('tm-grid');
+const tmTitle = document.getElementById('tm-title');
+
+let modalFilterCount = null;
+let modalFilterCollection = 'All';
+
+// Drag ghost element
+let dragGhostEl = null;
+
+function createDragGhost() {
+  if (dragGhostEl) return;
+  dragGhostEl = document.createElement('div');
+  dragGhostEl.className = 'drag-ghost';
+  document.body.appendChild(dragGhostEl);
+}
+
 /**
- * Initialize event listeners
+ * Initialize application
  */
 function init() {
+  createDragGhost();
+
+  // Dropzone
   dropzone.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', handleFileSelect);
 
-  ['dragenter', 'dragover'].forEach(eventName => {
-    dropzone.addEventListener(eventName, (e) => {
+  ['dragenter', 'dragover'].forEach(name => {
+    dropzone.addEventListener(name, (e) => {
       e.preventDefault();
       dropzone.classList.add('dragover');
     }, false);
   });
 
-  ['dragleave', 'drop'].forEach(eventName => {
-    dropzone.addEventListener(eventName, (e) => {
+  ['dragleave', 'drop'].forEach(name => {
+    dropzone.addEventListener(name, (e) => {
       e.preventDefault();
       dropzone.classList.remove('dragover');
     }, false);
   });
 
   dropzone.addEventListener('drop', (e) => {
-    const dt = e.dataTransfer;
-    const files = dt.files;
+    const files = e.dataTransfer.files;
     if (files && files.length) {
       loadFiles(Array.from(files));
     }
@@ -435,13 +563,21 @@ function init() {
   btnClearPhotos.addEventListener('click', clearAllPhotos);
   btnShuffleAll.addEventListener('click', shuffleAllLayouts);
   btnShuffleCurrent.addEventListener('click', shuffleCurrentLayout);
+  btnOpenTemplates.addEventListener('click', () => openTemplateModal(state.activeCardIndex));
   btnDownloadCurrent.addEventListener('click', downloadCurrentCard);
   btnExportZip.addEventListener('click', exportAllCardsZip);
 
   btnPrevCard.addEventListener('click', () => setActiveCard(state.activeCardIndex - 1));
   btnNextCard.addEventListener('click', () => setActiveCard(state.activeCardIndex + 1));
 
-  // Theme selection
+  // Collection filter
+  selectCollection.addEventListener('change', (e) => {
+    state.settings.collection = e.target.value;
+    recomputeAllCardLayouts();
+    renderAllCards();
+  });
+
+  // Theme selector
   themeSelector.addEventListener('click', (e) => {
     const pill = e.target.closest('.theme-pill');
     if (!pill) return;
@@ -459,12 +595,11 @@ function init() {
     document.querySelectorAll('.ratio-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.settings.aspectRatio = btn.dataset.ratio;
-    // Re-evaluate layouts and slot assignments under new aspect ratio
     recomputeAllCardLayouts();
     renderAllCards();
   });
 
-  // Distribution strategy & Orientation Match
+  // Distribution & Orientation Match
   photosPerCardSelect.addEventListener('change', (e) => {
     state.settings.photosPerCard = e.target.value;
     partitionPhotosIntoCards();
@@ -509,7 +644,7 @@ function init() {
     renderAllCards();
   });
 
-  // Typography toggles & inputs
+  // Typography
   toggleTypography.addEventListener('change', (e) => {
     state.settings.showTypography = e.target.checked;
     typographyControls.style.opacity = e.target.checked ? '1' : '0.4';
@@ -532,97 +667,121 @@ function init() {
     renderAllCards();
   });
 
+  if (inputDate) {
+    inputDate.addEventListener('input', (e) => {
+      state.settings.dateLine = e.target.value;
+      renderAllCards();
+    });
+  }
+
   exportScaleSelect.addEventListener('change', (e) => {
     state.settings.exportScale = parseInt(e.target.value);
   });
 
-  // Global mouse up for pan dragging
-  window.addEventListener('mouseup', handleGlobalMouseUp);
+  // Zoom controls
+  zoomRange.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value) / 100;
+    setZoomForSelectedSlot(val);
+  });
+
+  btnZoomIn.addEventListener('click', () => {
+    const cur = getZoomForSelectedSlot();
+    setZoomForSelectedSlot(Math.min(5, cur + 0.25));
+  });
+
+  btnZoomOut.addEventListener('click', () => {
+    const cur = getZoomForSelectedSlot();
+    setZoomForSelectedSlot(Math.max(1, cur - 0.25));
+  });
+
+  btnZoomReset.addEventListener('click', () => {
+    resetSelectedSlotTransform();
+  });
+
+  // Global mouse handlers for pan & cross-card swap
   window.addEventListener('mousemove', handleGlobalMouseMove);
+  window.addEventListener('mouseup', handleGlobalMouseUp);
+
+  // Template Modal handlers
+  tmClose.addEventListener('click', closeTemplateModal);
+  tmDone.addEventListener('click', closeTemplateModal);
+  templateModal.addEventListener('click', (e) => {
+    if (e.target === templateModal) closeTemplateModal();
+  });
 
   // Keyboard navigation
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'ArrowLeft') setActiveCard(state.activeCardIndex - 1);
     if (e.key === 'ArrowRight') setActiveCard(state.activeCardIndex + 1);
+    if (e.key === 'Escape' && !templateModal.hidden) closeTemplateModal();
   });
 
-  // Start with demo photos
+  // Load sample photos on start
   loadSamplePhotos();
 }
 
 /**
- * Handle file input selection
+ * Handle file input
  */
 function handleFileSelect(e) {
   const files = Array.from(e.target.files);
-  if (files.length) {
-    loadFiles(files);
-  }
+  if (files.length) loadFiles(files);
 }
 
-/**
- * Load array of File objects
- */
 async function loadFiles(files) {
   showToast(`Loading ${files.length} photos...`);
   const imageFiles = files.filter(f => f.type.startsWith('image/'));
-  
   if (imageFiles.length === 0) {
     showToast('Please select valid image files.');
     return;
   }
 
-  const loadedPhotos = await Promise.all(imageFiles.map(file => {
-    return new Promise((resolve) => {
+  const loaded = await Promise.all(imageFiles.map(file => {
+    return new Promise(resolve => {
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = ev => {
         const img = new Image();
         img.onload = () => {
           const w = img.naturalWidth;
           const h = img.naturalHeight;
           const aspect = w / h;
-          const orientation = aspect < 0.88 ? 'vertical' : (aspect > 1.15 ? 'horizontal' : 'square');
-
           resolve({
             id: 'photo_' + Math.random().toString(36).substr(2, 9),
             name: file.name,
-            dataUrl: event.target.result,
+            dataUrl: ev.target.result,
             img: img,
             width: w,
             height: h,
             aspect: aspect,
-            orientation: orientation,
-            panX: 0,
-            panY: 0
+            orientation: aspect < 0.88 ? 'vertical' : (aspect > 1.15 ? 'horizontal' : 'square')
           });
         };
-        img.src = event.target.result;
+        img.src = ev.target.result;
       };
       reader.readAsDataURL(file);
     });
   }));
 
-  state.photos.push(...loadedPhotos);
+  state.photos.push(...loaded);
   updateThumbnails();
   partitionPhotosIntoCards();
-  showToast(`Added ${loadedPhotos.length} photos (${state.photos.length} total)`);
+  showToast(`Added ${loaded.length} photos (${state.photos.length} total)`);
 }
 
-/**
- * Clear all photos
- */
 function clearAllPhotos() {
   state.photos = [];
   state.cards = [];
   state.activeCardIndex = 0;
+  state.selectedSlot = null;
+  updateZoomToolbar();
   updateThumbnails();
   renderAllCards();
   showToast('All photos cleared');
 }
 
 /**
- * Update Sidebar Thumbnails with Orientation Badges
+ * Update Sidebar Thumbnails & allow dragging from strip onto any card slot
  */
 function updateThumbnails() {
   thumbnailStrip.innerHTML = '';
@@ -639,8 +798,8 @@ function updateThumbnails() {
   state.photos.forEach((photo, idx) => {
     const slot = document.createElement('div');
     slot.className = 'thumb-slot';
-    slot.title = `${photo.name} (${photo.width}x${photo.height} - ${photo.orientation})`;
-    
+    slot.title = `${photo.name} (${photo.width}x${photo.height}) - Drag to place on card`;
+
     const img = document.createElement('img');
     img.src = photo.dataUrl;
 
@@ -656,6 +815,21 @@ function updateThumbnails() {
       removePhoto(idx);
     };
 
+    // Drag from sidebar thumbnail onto a card slot
+    slot.addEventListener('mousedown', (e) => {
+      if (e.target === delBtn) return;
+      startCrossCardDrag({
+        mode: 'swap',
+        fromCardIndex: -1,
+        fromSlotIndex: -1,
+        fromPhotoId: photo.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        photo: photo
+      });
+      e.preventDefault();
+    });
+
     slot.appendChild(img);
     slot.appendChild(badge);
     slot.appendChild(delBtn);
@@ -664,13 +838,84 @@ function updateThumbnails() {
 }
 
 function removePhoto(index) {
-  state.photos.splice(index, 1);
+  const removed = state.photos.splice(index, 1)[0];
+  state.cards.forEach(c => {
+    c.photoIds = c.photoIds.filter(id => id !== removed.id);
+  });
+  state.cards = state.cards.filter(c => c.photoIds.length > 0);
   updateThumbnails();
-  partitionPhotosIntoCards();
+  renderAllCards();
 }
 
 /**
- * Compute the effective aspect ratio (w/h) of a slot in canvas pixels
+ * Slot Transform Helpers (Zoom & Pan stored per slot in card)
+ */
+function getSlotTransform(card, slotIndex) {
+  if (!card.slotTransforms) card.slotTransforms = [];
+  if (!card.slotTransforms[slotIndex]) {
+    card.slotTransforms[slotIndex] = { zoom: 1.0, panX: 0, panY: 0 };
+  }
+  return card.slotTransforms[slotIndex];
+}
+
+function getZoomForSelectedSlot() {
+  if (!state.selectedSlot) return 1.0;
+  const card = state.cards[state.selectedSlot.cardIndex];
+  if (!card) return 1.0;
+  return getSlotTransform(card, state.selectedSlot.slotIndex).zoom || 1.0;
+}
+
+function setZoomForSelectedSlot(val) {
+  if (!state.selectedSlot) return;
+  const card = state.cards[state.selectedSlot.cardIndex];
+  if (!card) return;
+  const tf = getSlotTransform(card, state.selectedSlot.slotIndex);
+  tf.zoom = Math.max(1.0, Math.min(5.0, val));
+  updateZoomToolbar();
+  renderCardByIndex(state.selectedSlot.cardIndex);
+}
+
+function resetSelectedSlotTransform() {
+  if (!state.selectedSlot) return;
+  const card = state.cards[state.selectedSlot.cardIndex];
+  if (!card) return;
+  const tf = getSlotTransform(card, state.selectedSlot.slotIndex);
+  tf.zoom = 1.0;
+  tf.panX = 0;
+  tf.panY = 0;
+  updateZoomToolbar();
+  renderCardByIndex(state.selectedSlot.cardIndex);
+  showToast('Reset zoom & position');
+}
+
+function updateZoomToolbar() {
+  if (!state.selectedSlot) {
+    zoomControls.classList.add('disabled');
+    zoomRange.value = 100;
+    zoomValue.textContent = '100%';
+    return;
+  }
+  const card = state.cards[state.selectedSlot.cardIndex];
+  if (!card) {
+    zoomControls.classList.add('disabled');
+    return;
+  }
+  zoomControls.classList.remove('disabled');
+  const tf = getSlotTransform(card, state.selectedSlot.slotIndex);
+  const zPct = Math.round((tf.zoom || 1.0) * 100);
+  zoomRange.value = zPct;
+  zoomValue.textContent = zPct + '%';
+}
+
+function selectSlot(cardIndex, slotIndex) {
+  state.selectedSlot = { cardIndex, slotIndex };
+  setActiveCard(cardIndex);
+  updateZoomToolbar();
+  updateSlotSelectionIndicators();
+}
+
+/**
+ * Orientation & Aspect Ratio calculation
  */
 function getSlotAspectRatio(slot) {
   const dim = DIMENSIONS[state.settings.aspectRatio];
@@ -678,17 +923,9 @@ function getSlotAspectRatio(slot) {
   const margin = state.settings.margin * scaleRatio;
   const contentW = dim.width - margin * 2;
   const contentH = dim.height - margin * 2;
-
-  const slotW = slot.w * contentW;
-  const slotH = slot.h * contentH;
-  return slotW / slotH;
+  return (slot.w * contentW) / (slot.h * contentH);
 }
 
-/**
- * Orientation Compatibility Scoring Engine
- * Computes optimal matching between M photos and M slots of a candidate layout.
- * Returns { penalty, assignment: [photoIndexForSlot0, photoIndexForSlot1, ...] }
- */
 function scoreLayoutMatching(layout, photos) {
   const n = photos.length;
   if (layout.slots.length !== n) return { penalty: Infinity, assignment: [] };
@@ -696,7 +933,6 @@ function scoreLayoutMatching(layout, photos) {
   const slotAspects = layout.slots.map(s => getSlotAspectRatio(s));
   const photoAspects = photos.map(p => p.aspect);
 
-  // Generate all permutations of indices [0..n-1]
   const perms = getPermutations([...Array(n).keys()]);
   let minPenalty = Infinity;
   let bestPerm = perms[0];
@@ -708,18 +944,16 @@ function scoreLayoutMatching(layout, photos) {
       const pAspect = photoAspects[pIdx];
       const sAspect = slotAspects[slotIdx];
 
-      // Difference in log-aspect-ratio
       const logDiff = Math.abs(Math.log(pAspect) - Math.log(sAspect));
       penalty += logDiff * logDiff;
 
-      // Heavy penalty for cross-orientation mismatch (vertical photo forced into horizontal frame or vice versa)
       const pIsVert = pAspect < 0.90;
       const sIsVert = sAspect < 0.90;
       const pIsHoriz = pAspect > 1.15;
       const sIsHoriz = sAspect > 1.15;
 
       if ((pIsVert && sIsHoriz) || (pIsHoriz && sIsVert)) {
-        penalty += 12.0; // severe penalty
+        penalty += 12.0;
       }
     }
 
@@ -732,9 +966,6 @@ function scoreLayoutMatching(layout, photos) {
   return { penalty: minPenalty, assignment: bestPerm };
 }
 
-/**
- * Permutations helper (for N <= 6)
- */
 function getPermutations(arr) {
   if (arr.length <= 1) return [arr];
   const result = [];
@@ -749,12 +980,19 @@ function getPermutations(arr) {
   return result;
 }
 
-/**
- * Find the best layout for a group of photos, prioritizing orientation match!
- */
+function getAvailableTemplatesForCount(count) {
+  const col = state.settings.collection;
+  let list = TEMPLATE_CATALOG.filter(t => t.count === count);
+  if (col && col !== 'auto') {
+    const filtered = list.filter(t => t.collection.toLowerCase() === col.toLowerCase());
+    if (filtered.length > 0) list = filtered;
+  }
+  return list.length > 0 ? list : TEMPLATE_CATALOG.filter(t => t.count === count);
+}
+
 function selectBestLayoutForPhotos(photos) {
   const n = photos.length;
-  const candidates = LAYOUT_CATALOG[n] || LAYOUT_CATALOG[4] || LAYOUT_CATALOG[3];
+  const candidates = getAvailableTemplatesForCount(n);
   if (!candidates || candidates.length === 0) return null;
 
   let bestLayout = candidates[0];
@@ -774,8 +1012,7 @@ function selectBestLayoutForPhotos(photos) {
 }
 
 /**
- * Smart Partitioning of 15-30 Photos into Story Cards
- * Clusters photos by orientation so vertical photos get vertical frames and horizontal photos get horizontal frames.
+ * Partition 15–30 Photos into Cards
  */
 function partitionPhotosIntoCards() {
   if (state.photos.length === 0) {
@@ -788,58 +1025,45 @@ function partitionPhotosIntoCards() {
   const chunks = [];
 
   if (state.settings.matchOrientation) {
-    // Separate by orientation
     const verticals = allPhotos.filter(p => p.orientation === 'vertical');
     const horizontals = allPhotos.filter(p => p.orientation === 'horizontal');
     const squares = allPhotos.filter(p => p.orientation === 'square');
 
-    // Combine squares with smaller pool
     if (verticals.length >= horizontals.length) {
       horizontals.push(...squares);
     } else {
       verticals.push(...squares);
     }
 
-    // 1. First, create mixed cards if both vertical & horizontal are available:
-    // e.g. 1 horizontal + 2 vertical (layout: 3-mixed-1h-2v)
-    // e.g. 1 horizontal + 4 vertical (layout: 5-mixed-1h-4grid)
+    // Form mixed cards first
     while (horizontals.length >= 1 && verticals.length >= 2 && state.settings.photosPerCard === 'smart') {
       if (horizontals.length >= 1 && verticals.length >= 4) {
-        // 1 horizontal + 4 vertical
         const hPhoto = horizontals.shift();
         const vPhotos = verticals.splice(0, 4);
         chunks.push([hPhoto, ...vPhotos]);
       } else {
-        // 1 horizontal + 2 vertical
         const hPhoto = horizontals.shift();
         const vPhotos = verticals.splice(0, 2);
         chunks.push([hPhoto, ...vPhotos]);
       }
     }
 
-    // 2. Chunk remaining vertical photos (e.g. 4 into 2x2 portrait grid, 3 into 3 columns, 2 into side-by-side)
     chunkPhotoList(verticals, chunks, state.settings.photosPerCard, [4, 3, 2]);
-
-    // 3. Chunk remaining horizontal photos (e.g. 3 into 3-strips, 2 into split)
     chunkPhotoList(horizontals, chunks, state.settings.photosPerCard, [3, 2, 4]);
-
   } else {
-    // Standard linear chunking
     chunkPhotoList(allPhotos, chunks, state.settings.photosPerCard, [3, 4, 2, 5]);
   }
 
-  // Create cards from chunks
   state.cards = chunks.map((chunkPhotos, cardIndex) => {
     const { layout, assignment } = selectBestLayoutForPhotos(chunkPhotos);
-    
-    // Ordered photo IDs matching the slots
     const orderedPhotoIds = assignment.map(idx => chunkPhotos[idx].id);
 
     return {
       id: 'card_' + cardIndex,
       photoIds: orderedPhotoIds,
-      layoutId: layout ? layout.id : 'single-hero',
-      size: chunkPhotos.length
+      layoutId: layout ? layout.id : 'cs-01-hero',
+      size: chunkPhotos.length,
+      slotTransforms: chunkPhotos.map(() => ({ zoom: 1.0, panX: 0, panY: 0 }))
     };
   });
 
@@ -850,14 +1074,10 @@ function partitionPhotosIntoCards() {
   renderAllCards();
 }
 
-/**
- * Chunk a single list of photos into appropriate groups
- */
 function chunkPhotoList(list, targetChunks, strategy, preferredSizes = [4, 3, 2]) {
   while (list.length > 0) {
     if (list.length <= 5) {
       if (list.length === 1 && targetChunks.length > 0) {
-        // Append single photo to last chunk if possible
         const lastChunk = targetChunks[targetChunks.length - 1];
         if (lastChunk.length < 5) {
           lastChunk.push(list.shift());
@@ -872,7 +1092,6 @@ function chunkPhotoList(list, targetChunks, strategy, preferredSizes = [4, 3, 2]
     if (strategy !== 'smart') {
       size = parseInt(strategy);
     } else {
-      // Pick size that minimizes remainder
       for (const s of preferredSizes) {
         if (list.length % s === 0 || (list.length - s >= 2)) {
           size = s;
@@ -886,9 +1105,6 @@ function chunkPhotoList(list, targetChunks, strategy, preferredSizes = [4, 3, 2]
   }
 }
 
-/**
- * Recompute layouts for all cards (e.g. when aspect ratio or orientation toggle changes)
- */
 function recomputeAllCardLayouts() {
   state.cards.forEach(card => {
     const photos = card.photoIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
@@ -902,69 +1118,44 @@ function recomputeAllCardLayouts() {
   });
 }
 
-/**
- * Shuffle layouts across all cards (choosing only compatible layouts)
- */
 function shuffleAllLayouts() {
   state.cards.forEach(card => {
     const photos = card.photoIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
-    const available = LAYOUT_CATALOG[photos.length] || [];
+    const available = getAvailableTemplatesForCount(photos.length);
     if (available.length > 1) {
-      // Score all candidate layouts and pick among the top compatible ones
-      const scored = available.map(l => ({
-        layout: l,
-        ...scoreLayoutMatching(l, photos)
-      })).filter(s => s.penalty < 25); // reject severe mismatches!
-
-      const pool = scored.length > 0 ? scored : available.map(l => ({ layout: l, ...scoreLayoutMatching(l, photos) }));
-      const picked = pool[Math.floor(Math.random() * pool.length)];
-      card.layoutId = picked.layout.id;
-      card.photoIds = picked.assignment.map(idx => photos[idx].id);
+      const other = available.filter(t => t.id !== card.layoutId);
+      const picked = other[Math.floor(Math.random() * other.length)] || available[0];
+      const { assignment } = scoreLayoutMatching(picked, photos);
+      card.layoutId = picked.id;
+      card.photoIds = assignment.map(idx => photos[idx].id);
     }
   });
   renderAllCards();
-  showToast('Shuffled layouts (respecting frame orientations)!');
+  showToast('Shuffled layouts across all cards');
 }
 
-/**
- * Shuffle current card's layout
- */
 function shuffleCurrentLayout() {
   const card = state.cards[state.activeCardIndex];
   if (!card) return;
   const photos = card.photoIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
-  const available = LAYOUT_CATALOG[photos.length] || [];
-  
+  const available = getAvailableTemplatesForCount(photos.length);
   if (available.length > 1) {
-    // Score all available
-    const scored = available.map(l => ({
-      layout: l,
-      ...scoreLayoutMatching(l, photos)
-    })).filter(s => s.penalty < 25);
-
-    const pool = scored.length > 0 ? scored : available.map(l => ({ layout: l, ...scoreLayoutMatching(l, photos) }));
-    const currentIdx = pool.findIndex(s => s.layout.id === card.layoutId);
-    const nextItem = pool[(currentIdx + 1) % pool.length];
-
-    card.layoutId = nextItem.layout.id;
-    card.photoIds = nextItem.assignment.map(idx => photos[idx].id);
+    const idx = available.findIndex(t => t.id === card.layoutId);
+    const nextItem = available[(idx + 1) % available.length];
+    const { assignment } = scoreLayoutMatching(nextItem, photos);
+    card.layoutId = nextItem.id;
+    card.photoIds = assignment.map(i => photos[i].id);
     renderAllCards();
-    showToast(`Layout: ${nextItem.layout.name}`);
+    showToast(`Applied: ${nextItem.name}`);
   }
 }
 
-/**
- * Find layout object by id
- */
-function getLayoutById(layoutId, photoCount) {
-  const list = LAYOUT_CATALOG[photoCount] || [];
-  const found = list.find(l => l.id === layoutId);
-  if (found) return found;
-  return list[0] || (LAYOUT_CATALOG[3] ? LAYOUT_CATALOG[3][0] : null);
+function getTemplateById(id) {
+  return TEMPLATE_CATALOG.find(t => t.id === id) || TEMPLATE_CATALOG[0];
 }
 
 /**
- * Render all cards in the center deck and bottom story strip
+ * Render All Cards to Deck
  */
 function renderAllCards() {
   cardsDeck.innerHTML = '';
@@ -983,7 +1174,7 @@ function renderAllCards() {
           <line x1="9" y1="21" x2="9" y2="9"/>
         </svg>
         <h4>No photos added yet</h4>
-        <p>Drop 15 to 30 photos or click "Demo Photos" in the top bar to preview aesthetic collage templates with orientation matching.</p>
+        <p>Drop 15 to 30 photos or click "Demo Photos" in the top bar to preview Unfold & Classico story templates.</p>
         <button class="btn btn-primary" onclick="loadSamplePhotos()">Load Demo Photos</button>
       </div>
     `;
@@ -993,10 +1184,9 @@ function renderAllCards() {
   const dim = DIMENSIONS[state.settings.aspectRatio];
 
   state.cards.forEach((card, idx) => {
-    // 1. Deck Card Wrapper
     const wrapper = document.createElement('div');
     wrapper.className = `story-card-wrapper ${idx === state.activeCardIndex ? 'active-card' : ''}`;
-    wrapper.dataset.index = idx;
+    wrapper.dataset.cardIndex = idx;
 
     const container = document.createElement('div');
     container.className = 'story-card-container';
@@ -1010,38 +1200,37 @@ function renderAllCards() {
     canvas.style.width = dim.previewWidth + 'px';
     canvas.style.height = dim.previewHeight + 'px';
 
-    // Interactive Drag to Pan listeners
-    attachCanvasPanListeners(canvas, idx);
+    // Canvas Mouse & Drag Listeners
+    attachCanvasListeners(canvas, idx);
 
-    // Badge
+    // Badges & Buttons
     const badge = document.createElement('div');
     badge.className = 'card-header-badge';
     badge.textContent = `STORY ${idx + 1}`;
 
-    // Add slot / replace icon (+)
     const addBtn = document.createElement('button');
     addBtn.className = 'card-add-slot-btn';
     addBtn.innerHTML = '+';
-    addBtn.title = 'Switch layout template';
+    addBtn.title = 'Browse templates for this card';
     addBtn.onclick = (e) => {
       e.stopPropagation();
-      cycleCardLayout(idx);
+      openTemplateModal(idx);
     };
 
     container.appendChild(canvas);
     container.appendChild(badge);
     container.appendChild(addBtn);
 
-    // Card Action Bar beneath canvas
+    // Card Action Bar
     const actionsBar = document.createElement('div');
     actionsBar.className = 'card-actions-bar';
 
-    const layout = getLayoutById(card.layoutId, card.photoIds.length);
+    const layout = getTemplateById(card.layoutId);
     const layoutBtn = document.createElement('button');
     layoutBtn.className = 'action-pill-btn';
-    layoutBtn.textContent = layout ? layout.name : 'Change Layout';
-    layoutBtn.title = 'Click to cycle compatible layouts';
-    layoutBtn.onclick = () => cycleCardLayout(idx);
+    layoutBtn.textContent = layout.name;
+    layoutBtn.title = 'Click to open template library';
+    layoutBtn.onclick = () => openTemplateModal(idx);
 
     const exportBtn = document.createElement('button');
     exportBtn.className = 'action-pill-btn';
@@ -1057,17 +1246,17 @@ function renderAllCards() {
     wrapper.addEventListener('click', () => setActiveCard(idx));
     cardsDeck.appendChild(wrapper);
 
-    // Render Canvas Content
+    // Render Canvas
     renderCardToCanvas(card, canvas);
 
-    // 2. Bottom Story Strip Thumbnail
+    // Bottom Story Strip Thumbnail
     const stripItem = document.createElement('div');
     stripItem.className = `strip-item ${idx === state.activeCardIndex ? 'active' : ''}`;
-    stripItem.dataset.index = idx;
+    stripItem.dataset.cardIndex = idx;
 
     const stripCanvas = document.createElement('canvas');
     stripCanvas.width = 180;
-    stripCanvas.height = 180 * (dim.height / dim.width);
+    stripCanvas.height = Math.round(180 * (dim.height / dim.width));
     stripItem.appendChild(stripCanvas);
 
     const indexBadge = document.createElement('span');
@@ -1081,109 +1270,313 @@ function renderAllCards() {
     storyStrip.appendChild(stripItem);
   });
 
+  updateSlotSelectionIndicators();
   scrollToActiveCard();
 }
 
-/**
- * Cycle layout for a specific card respecting orientation
- */
-function cycleCardLayout(cardIndex) {
+function renderCardByIndex(cardIndex) {
   const card = state.cards[cardIndex];
   if (!card) return;
-  const photos = card.photoIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
-  const available = LAYOUT_CATALOG[photos.length] || [];
-  
-  if (available.length > 1) {
-    const scored = available.map(l => ({
-      layout: l,
-      ...scoreLayoutMatching(l, photos)
-    })).filter(s => s.penalty < 25);
 
-    const pool = scored.length > 0 ? scored : available.map(l => ({ layout: l, ...scoreLayoutMatching(l, photos) }));
-    const currentIdx = pool.findIndex(s => s.layout.id === card.layoutId);
-    const nextItem = pool[(currentIdx + 1) % pool.length];
-
-    card.layoutId = nextItem.layout.id;
-    card.photoIds = nextItem.assignment.map(idx => photos[idx].id);
-    renderAllCards();
+  const wrapper = document.querySelector(`.story-card-wrapper[data-card-index="${cardIndex}"]`);
+  if (wrapper) {
+    const canvas = wrapper.querySelector('.story-card-canvas');
+    if (canvas) renderCardToCanvas(card, canvas);
   }
+
+  const stripItem = document.querySelector(`.strip-item[data-card-index="${cardIndex}"]`);
+  if (stripItem) {
+    const stripCanvas = stripItem.querySelector('canvas');
+    if (stripCanvas) renderCardToCanvas(card, stripCanvas, true);
+  }
+
+  updateSlotSelectionIndicators();
 }
 
 /**
- * Interactive Drag to Pan within photo slots
+ * Visual Selection & Drop-Target Highlights
  */
-function attachCanvasPanListeners(canvas, cardIndex) {
-  canvas.addEventListener('mousedown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const clickX = (e.clientX - rect.left) / rect.width;
-    const clickY = (e.clientY - rect.top) / rect.height;
+function updateSlotSelectionIndicators() {
+  document.querySelectorAll('.slot-selected-indicator, .slot-drop-target-indicator').forEach(el => el.remove());
 
+  // 1. Draw Selected Slot ring
+  if (state.selectedSlot) {
+    const { cardIndex, slotIndex } = state.selectedSlot;
     const card = state.cards[cardIndex];
-    if (!card) return;
-    const layout = getLayoutById(card.layoutId, card.photoIds.length);
-    if (!layout) return;
-
-    // Find which slot was clicked
-    const dim = DIMENSIONS[state.settings.aspectRatio];
-    const marginNormX = state.settings.margin / dim.width;
-    const marginNormY = state.settings.margin / dim.height;
-    const contentW = 1 - marginNormX * 2;
-    const contentH = 1 - marginNormY * 2;
-
-    const slotIndex = layout.slots.findIndex(s => {
-      const sx = marginNormX + s.x * contentW;
-      const sy = marginNormY + s.y * contentH;
-      const sw = s.w * contentW;
-      const sh = s.h * contentH;
-      return clickX >= sx && clickX <= sx + sw && clickY >= sy && clickY <= sy + sh;
-    });
-
-    if (slotIndex !== -1 && card.photoIds[slotIndex]) {
-      const photo = state.photos.find(p => p.id === card.photoIds[slotIndex]);
-      if (photo) {
-        state.dragState = {
-          isDragging: true,
-          cardIndex: cardIndex,
-          slotIndex: slotIndex,
-          startX: e.clientX,
-          startY: e.clientY,
-          initialPanX: photo.panX || 0,
-          initialPanY: photo.panY || 0,
-          canvas: canvas
-        };
-        canvas.classList.add('is-dragging');
-        e.preventDefault();
+    if (card) {
+      const layout = getTemplateById(card.layoutId);
+      const slot = layout.slots[slotIndex];
+      const wrapper = document.querySelector(`.story-card-wrapper[data-card-index="${cardIndex}"] .story-card-container`);
+      if (wrapper && slot) {
+        const ring = document.createElement('div');
+        ring.className = 'slot-selected-indicator';
+        positionIndicatorOnContainer(ring, slot, wrapper);
+        wrapper.appendChild(ring);
       }
     }
+  }
+
+  // 2. Draw Drop Target dashed indicator while dragging
+  if (state.dragState.active && state.dragState.hoverCardIndex !== -1 && state.dragState.hoverSlotIndex !== -1) {
+    const { hoverCardIndex, hoverSlotIndex } = state.dragState;
+    const card = state.cards[hoverCardIndex];
+    if (card) {
+      const layout = getTemplateById(card.layoutId);
+      const slot = layout.slots[hoverSlotIndex];
+      const wrapper = document.querySelector(`.story-card-wrapper[data-card-index="${hoverCardIndex}"] .story-card-container`);
+      if (wrapper && slot) {
+        const targetInd = document.createElement('div');
+        targetInd.className = 'slot-drop-target-indicator';
+        positionIndicatorOnContainer(targetInd, slot, wrapper);
+        wrapper.appendChild(targetInd);
+      }
+    }
+  }
+}
+
+function positionIndicatorOnContainer(el, slot, container) {
+  const dim = DIMENSIONS[state.settings.aspectRatio];
+  const scaleRatio = dim.width / 1080;
+  const marginPx = state.settings.margin * scaleRatio;
+  const gapPx = state.settings.gap * scaleRatio;
+  const contentW = dim.width - marginPx * 2;
+  const contentH = dim.height - marginPx * 2;
+
+  const sx = marginPx + slot.x * contentW;
+  const sy = marginPx + slot.y * contentH;
+  const sw = slot.w * contentW - (slot.w < 1 ? gapPx / 2 : 0);
+  const sh = slot.h * contentH - (slot.h < 1 ? gapPx / 2 : 0);
+
+  const previewW = container.clientWidth;
+  const scale = previewW / dim.width;
+
+  el.style.left = (sx * scale) + 'px';
+  el.style.top = (sy * scale) + 'px';
+  el.style.width = (sw * scale) + 'px';
+  el.style.height = (sh * scale) + 'px';
+}
+
+/**
+ * Canvas Drag, Pan, Zoom, and Cross-Card Swap Interaction
+ */
+function attachCanvasListeners(canvas, cardIndex) {
+  // Click & Drag inside frame
+  canvas.addEventListener('mousedown', (e) => {
+    const slotIdx = getSlotAtCoords(canvas, cardIndex, e.clientX, e.clientY);
+    if (slotIdx === -1) return;
+
+    selectSlot(cardIndex, slotIdx);
+
+    const card = state.cards[cardIndex];
+    const photoId = card.photoIds[slotIdx];
+    const photo = state.photos.find(p => p.id === photoId);
+    const tf = getSlotTransform(card, slotIdx);
+
+    startCrossCardDrag({
+      mode: 'undecided',
+      fromCardIndex: cardIndex,
+      fromSlotIndex: slotIdx,
+      fromPhotoId: photoId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialPanX: tf.panX || 0,
+      initialPanY: tf.panY || 0,
+      photo: photo
+    });
+
+    e.preventDefault();
+  });
+
+  // Mouse wheel to zoom into specific photo slot
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const slotIdx = getSlotAtCoords(canvas, cardIndex, e.clientX, e.clientY);
+    if (slotIdx === -1) return;
+
+    selectSlot(cardIndex, slotIdx);
+    const card = state.cards[cardIndex];
+    const tf = getSlotTransform(card, slotIdx);
+
+    const delta = e.deltaY < 0 ? 0.12 : -0.12;
+    tf.zoom = Math.max(1.0, Math.min(5.0, (tf.zoom || 1.0) + delta));
+    updateZoomToolbar();
+    renderCardByIndex(cardIndex);
+  }, { passive: false });
+
+  // Double click resets zoom & pan
+  canvas.addEventListener('dblclick', (e) => {
+    const slotIdx = getSlotAtCoords(canvas, cardIndex, e.clientX, e.clientY);
+    if (slotIdx === -1) return;
+    const card = state.cards[cardIndex];
+    const tf = getSlotTransform(card, slotIdx);
+    tf.zoom = 1.0;
+    tf.panX = 0;
+    tf.panY = 0;
+    updateZoomToolbar();
+    renderCardByIndex(cardIndex);
+    showToast('Reset frame zoom');
   });
 }
 
-function handleGlobalMouseMove(e) {
-  if (!state.dragState.isDragging) return;
-  const { cardIndex, slotIndex, startX, startY, initialPanX, initialPanY, canvas } = state.dragState;
+function getSlotAtCoords(canvas, cardIndex, clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const clickX = (clientX - rect.left) / rect.width;
+  const clickY = (clientY - rect.top) / rect.height;
+
   const card = state.cards[cardIndex];
-  if (!card) return;
-  const photo = state.photos.find(p => p.id === card.photoIds[slotIndex]);
-  if (!photo) return;
+  if (!card) return -1;
+  const layout = getTemplateById(card.layoutId);
 
-  const dx = e.clientX - startX;
-  const dy = e.clientY - startY;
+  const dim = DIMENSIONS[state.settings.aspectRatio];
+  const marginNormX = state.settings.margin / dim.width;
+  const marginNormY = state.settings.margin / dim.height;
+  const contentW = 1 - marginNormX * 2;
+  const contentH = 1 - marginNormY * 2;
 
-  // Sensitivity
-  const sensitivity = 0.0025;
-  photo.panX = Math.max(-0.5, Math.min(0.5, initialPanX - dx * sensitivity));
-  photo.panY = Math.max(-0.5, Math.min(0.5, initialPanY - dy * sensitivity));
-
-  renderCardToCanvas(card, canvas);
+  return layout.slots.findIndex(s => {
+    const sx = marginNormX + s.x * contentW;
+    const sy = marginNormY + s.y * contentH;
+    const sw = s.w * contentW;
+    const sh = s.h * contentH;
+    return clickX >= sx && clickX <= sx + sw && clickY >= sy && clickY <= sy + sh;
+  });
 }
 
-function handleGlobalMouseUp() {
-  if (state.dragState.isDragging) {
-    if (state.dragState.canvas) {
-      state.dragState.canvas.classList.remove('is-dragging');
-    }
-    state.dragState.isDragging = false;
+function startCrossCardDrag(info) {
+  state.dragState = {
+    active: true,
+    mode: info.mode,
+    fromCardIndex: info.fromCardIndex,
+    fromSlotIndex: info.fromSlotIndex,
+    fromPhotoId: info.fromPhotoId,
+    startX: info.startX,
+    startY: info.startY,
+    currentX: info.startX,
+    currentY: info.startY,
+    hoverCardIndex: -1,
+    hoverSlotIndex: -1,
+    initialPanX: info.initialPanX || 0,
+    initialPanY: info.initialPanY || 0,
+    photo: info.photo
+  };
+
+  if (info.photo) {
+    dragGhostEl.style.backgroundImage = `url("${info.photo.dataUrl}")`;
   }
+}
+
+function handleGlobalMouseMove(e) {
+  if (!state.dragState.active) return;
+
+  const ds = state.dragState;
+  ds.currentX = e.clientX;
+  ds.currentY = e.clientY;
+
+  const dx = e.clientX - ds.startX;
+  const dy = e.clientY - ds.startY;
+  const dist = Math.hypot(dx, dy);
+
+  // If undecided, decide whether user is panning inside frame or dragging to swap
+  if (ds.mode === 'undecided') {
+    if (dist > 8) {
+      ds.mode = 'swap';
+      document.body.classList.add('is-dragging-photo');
+      dragGhostEl.classList.add('show');
+    }
+  }
+
+  // SWAP DRAGGING MODE: moving ghost and finding drop target
+  if (ds.mode === 'swap') {
+    dragGhostEl.style.transform = `translate(${e.clientX - 40}px, ${e.clientY - 40}px)`;
+
+    // Find canvas and slot under mouse
+    const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+    const canvasBelow = elemBelow ? elemBelow.closest('.story-card-canvas') : null;
+
+    if (canvasBelow) {
+      const wrapper = canvasBelow.closest('.story-card-wrapper');
+      const targetCardIdx = wrapper ? parseInt(wrapper.dataset.cardIndex) : -1;
+      if (targetCardIdx !== -1) {
+        const targetSlotIdx = getSlotAtCoords(canvasBelow, targetCardIdx, e.clientX, e.clientY);
+        if (targetSlotIdx !== -1) {
+          ds.hoverCardIndex = targetCardIdx;
+          ds.hoverSlotIndex = targetSlotIdx;
+          updateSlotSelectionIndicators();
+          return;
+        }
+      }
+    }
+
+    ds.hoverCardIndex = -1;
+    ds.hoverSlotIndex = -1;
+    updateSlotSelectionIndicators();
+    return;
+  }
+
+  // PANNING MODE (when zoom > 1 or user dragging inside frame)
+  if (ds.mode === 'undecided' || ds.mode === 'pan') {
+    if (ds.fromCardIndex !== -1 && ds.fromSlotIndex !== -1) {
+      const card = state.cards[ds.fromCardIndex];
+      if (card) {
+        const tf = getSlotTransform(card, ds.fromSlotIndex);
+        const sensitivity = 0.0035 / (tf.zoom || 1.0);
+        tf.panX = Math.max(-0.5, Math.min(0.5, ds.initialPanX - dx * sensitivity));
+        tf.panY = Math.max(-0.5, Math.min(0.5, ds.initialPanY - dy * sensitivity));
+        renderCardByIndex(ds.fromCardIndex);
+      }
+    }
+  }
+}
+
+function handleGlobalMouseUp(e) {
+  if (!state.dragState.active) return;
+
+  const ds = state.dragState;
+  document.body.classList.remove('is-dragging-photo');
+  dragGhostEl.classList.remove('show');
+
+  // Perform Swap if dropped onto a valid target slot
+  if (ds.mode === 'swap' && ds.hoverCardIndex !== -1 && ds.hoverSlotIndex !== -1) {
+    const toCard = state.cards[ds.hoverCardIndex];
+    const toSlot = ds.hoverSlotIndex;
+
+    // Dropped from sidebar thumbnail onto a slot
+    if (ds.fromCardIndex === -1) {
+      toCard.photoIds[toSlot] = ds.fromPhotoId;
+      renderCardByIndex(ds.hoverCardIndex);
+      showToast(`Placed photo in Story ${ds.hoverCardIndex + 1}`);
+    }
+    // Dropped from Card A to Card B (or within same card)
+    else if (ds.fromCardIndex !== ds.hoverCardIndex || ds.fromSlotIndex !== toSlot) {
+      const fromCard = state.cards[ds.fromCardIndex];
+      const fromSlot = ds.fromSlotIndex;
+
+      // Swap photo IDs
+      const tempId = toCard.photoIds[toSlot];
+      toCard.photoIds[toSlot] = fromCard.photoIds[fromSlot];
+      fromCard.photoIds[fromSlot] = tempId;
+
+      // Swap slot transforms (zoom / pan)
+      const tfFrom = getSlotTransform(fromCard, fromSlot);
+      const tfTo = getSlotTransform(toCard, toSlot);
+      const tempTf = { ...tfTo };
+      toCard.slotTransforms[toSlot] = { ...tfFrom };
+      fromCard.slotTransforms[fromSlot] = tempTf;
+
+      renderCardByIndex(ds.fromCardIndex);
+      if (ds.fromCardIndex !== ds.hoverCardIndex) {
+        renderCardByIndex(ds.hoverCardIndex);
+      }
+
+      selectSlot(ds.hoverCardIndex, toSlot);
+      showToast(`Swapped photo to Story ${ds.hoverCardIndex + 1}`);
+    }
+  }
+
+  state.dragState.active = false;
+  state.dragState.hoverCardIndex = -1;
+  state.dragState.hoverSlotIndex = -1;
+  updateSlotSelectionIndicators();
 }
 
 /**
@@ -1192,7 +1585,7 @@ function handleGlobalMouseUp() {
 function setActiveCard(index) {
   if (index < 0 || index >= state.cards.length) return;
   state.activeCardIndex = index;
-  
+
   cardIndicator.textContent = `Card ${state.activeCardIndex + 1} of ${state.cards.length}`;
 
   document.querySelectorAll('.story-card-wrapper').forEach((el, i) => {
@@ -1221,7 +1614,7 @@ function renderCardToCanvas(card, canvas, isThumbnail = false) {
   const cw = canvas.width;
   const ch = canvas.height;
   const theme = THEMES[state.settings.theme] || THEMES.clasico;
-  const layout = getLayoutById(card.layoutId, card.photoIds.length);
+  const layout = getTemplateById(card.layoutId);
   if (!layout) return;
 
   // Background
@@ -1229,17 +1622,14 @@ function renderCardToCanvas(card, canvas, isThumbnail = false) {
   ctx.fillStyle = customBg;
   ctx.fillRect(0, 0, cw, ch);
 
-  // Paper texture simulation
   if (theme.hasPaperTexture && !isThumbnail) {
     drawPaperTexture(ctx, cw, ch);
   }
 
-  // Film borders
-  if (theme.hasFilmBorder) {
+  if (theme.hasFilmBorder || layout.isFilm) {
     drawFilmDetails(ctx, cw, ch, card);
   }
 
-  // Margins & Dimensions
   const scaleRatio = cw / 1080;
   const margin = state.settings.margin * scaleRatio;
   const gap = state.settings.gap * scaleRatio;
@@ -1250,10 +1640,9 @@ function renderCardToCanvas(card, canvas, isThumbnail = false) {
   const contentW = cw - margin * 2;
   const contentH = ch - margin * 2;
 
-  // Photos
+  // Retrieve photos
   const photos = card.photoIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
 
-  // Render photo slots
   layout.slots.forEach((slot, slotIdx) => {
     const photo = photos[slotIdx];
     if (!photo) return;
@@ -1263,26 +1652,31 @@ function renderCardToCanvas(card, canvas, isThumbnail = false) {
     const sw = slot.w * contentW - (slot.w < 1 ? gap / 2 : 0);
     const sh = slot.h * contentH - (slot.h < 1 ? gap / 2 : 0);
 
+    const tf = getSlotTransform(card, slotIdx);
+
     ctx.save();
+
+    // Polaroid frame border if polaroid layout
+    if (layout.isPolaroid) {
+      drawPolaroidFrame(ctx, sx, sy, sw, sh, radius, scaleRatio);
+    }
 
     if (radius > 0) {
       roundedRectPath(ctx, sx, sy, sw, sh, radius);
       ctx.clip();
     }
 
-    if (state.settings.fitMode === 'contain') {
-      // Contain mode (no crop, letterboxed within slot)
+    if (state.settings.fitMode === 'contain' && tf.zoom <= 1.0) {
       ctx.fillStyle = 'rgba(0,0,0,0.05)';
       ctx.fillRect(sx, sy, sw, sh);
       drawImageContain(ctx, photo.img, sx, sy, sw, sh);
     } else {
-      // Cover mode with interactive pan
-      drawImageCoverWithPan(ctx, photo, sx, sy, sw, sh);
+      drawImageCoverWithZoomAndPan(ctx, photo, sx, sy, sw, sh, tf.zoom || 1.0, tf.panX || 0, tf.panY || 0);
     }
 
     ctx.restore();
 
-    // Border
+    // Subtle border
     if (theme.border && theme.border !== 'transparent') {
       ctx.save();
       ctx.strokeStyle = theme.border;
@@ -1307,6 +1701,21 @@ function renderCardToCanvas(card, canvas, isThumbnail = false) {
 
     drawEditorialTypography(ctx, tx, ty, tw, th, theme, scaleRatio);
   }
+}
+
+/**
+ * Draw Polaroid Frame
+ */
+function drawPolaroidFrame(ctx, sx, sy, sw, sh, radius, scaleRatio) {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0,0,0,0.12)';
+  ctx.shadowBlur = 14 * scaleRatio;
+  ctx.shadowOffsetY = 6 * scaleRatio;
+  const pad = 12 * scaleRatio;
+  const botPad = 40 * scaleRatio;
+  ctx.fillRect(sx - pad, sy - pad, sw + pad * 2, sh + pad + botPad);
+  ctx.restore();
 }
 
 /**
@@ -1340,6 +1749,13 @@ function drawEditorialTypography(ctx, x, y, w, h, theme, scaleRatio) {
     const maxWidth = w * 0.92;
     const lineHeight = 28 * scaleRatio;
     wrapText(ctx, state.settings.bodyText, centerX, currentY, maxWidth, lineHeight, 3);
+    currentY += lineHeight * 2;
+  }
+
+  if (state.settings.dateLine) {
+    ctx.font = `600 ${Math.round(13 * scaleRatio)}px "Space Mono", monospace`;
+    ctx.fillStyle = theme.textMuted;
+    ctx.fillText(state.settings.dateLine.toUpperCase(), centerX, currentY + 16 * scaleRatio);
   }
 
   ctx.restore();
@@ -1370,40 +1786,37 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
 }
 
 /**
- * Draw Image Cover with Pan Offset
+ * Draw Image Cover with Independent Zoom and Pan
  */
-function drawImageCoverWithPan(ctx, photo, dx, dy, dw, dh) {
+function drawImageCoverWithZoomAndPan(ctx, photo, dx, dy, dw, dh, zoom = 1.0, panX = 0, panY = 0) {
   const img = photo.img;
   const imgW = img.naturalWidth;
   const imgH = img.naturalHeight;
   const imgRatio = imgW / imgH;
   const targetRatio = dw / dh;
 
-  let sx, sy, sw, sh;
+  let baseW, baseH;
   if (imgRatio > targetRatio) {
-    // Image is wider than target frame: pan horizontally
-    sh = imgH;
-    sw = imgH * targetRatio;
-    const maxShiftX = imgW - sw;
-    const panOffset = (photo.panX || 0) * maxShiftX;
-    sx = Math.max(0, Math.min(maxShiftX, (maxShiftX / 2) + panOffset));
-    sy = 0;
+    baseH = imgH;
+    baseW = imgH * targetRatio;
   } else {
-    // Image is taller than target frame: pan vertically
-    sw = imgW;
-    sh = imgW / targetRatio;
-    const maxShiftY = imgH - sh;
-    const panOffset = (photo.panY || 0) * maxShiftY;
-    sx = 0;
-    sy = Math.max(0, Math.min(maxShiftY, (maxShiftY / 2) + panOffset));
+    baseW = imgW;
+    baseH = imgW / targetRatio;
   }
 
-  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  // Apply zoom factor
+  const effectiveW = baseW / zoom;
+  const effectiveH = baseH / zoom;
+
+  const maxShiftX = imgW - effectiveW;
+  const maxShiftY = imgH - effectiveH;
+
+  const sx = Math.max(0, Math.min(maxShiftX, (maxShiftX / 2) + panX * maxShiftX));
+  const sy = Math.max(0, Math.min(maxShiftY, (maxShiftY / 2) + panY * maxShiftY));
+
+  ctx.drawImage(img, sx, sy, effectiveW, effectiveH, dx, dy, dw, dh);
 }
 
-/**
- * Draw Image Contain (no cropping)
- */
 function drawImageContain(ctx, img, dx, dy, dw, dh) {
   const imgRatio = img.naturalWidth / img.naturalHeight;
   const targetRatio = dw / dh;
@@ -1462,7 +1875,182 @@ function drawFilmDetails(ctx, w, h, card) {
 }
 
 /**
- * Download Single Card as PNG
+ * Template Browser Modal
+ */
+function openTemplateModal(cardIndex) {
+  const card = state.cards[cardIndex];
+  if (!card) return;
+
+  state.activeCardIndex = cardIndex;
+  tmTitle.textContent = `Templates for Story ${cardIndex + 1}`;
+  modalFilterCount = card.photoIds.length;
+  modalFilterCollection = 'All';
+
+  renderModalControls();
+  renderModalGrid();
+
+  templateModal.hidden = false;
+}
+
+function closeTemplateModal() {
+  templateModal.hidden = true;
+}
+
+function renderModalControls() {
+  // Photo count filter chips (1 to 6)
+  tmCounts.innerHTML = '';
+  [1, 2, 3, 4, 5, 6].forEach(cnt => {
+    const chip = document.createElement('button');
+    chip.className = `tm-chip ${cnt === modalFilterCount ? 'active' : ''}`;
+    const totalMatching = TEMPLATE_CATALOG.filter(t => t.count === cnt).length;
+    chip.innerHTML = `${cnt} Photos <span class="tm-chip-count">(${totalMatching})</span>`;
+    chip.onclick = () => {
+      modalFilterCount = cnt;
+      renderModalControls();
+      renderModalGrid();
+    };
+    tmCounts.appendChild(chip);
+  });
+
+  // Collection chips
+  tmCollections.innerHTML = '';
+  const collections = ['All', 'Classico', 'Editorial', 'Film', 'Polaroid', 'Minimal'];
+  collections.forEach(col => {
+    const chip = document.createElement('button');
+    chip.className = `tm-chip ${col === modalFilterCollection ? 'active' : ''}`;
+    chip.textContent = col;
+    chip.onclick = () => {
+      modalFilterCollection = col;
+      renderModalControls();
+      renderModalGrid();
+    };
+    tmCollections.appendChild(chip);
+  });
+}
+
+function renderModalGrid() {
+  tmGrid.innerHTML = '';
+  const currentCard = state.cards[state.activeCardIndex];
+
+  let filtered = TEMPLATE_CATALOG.filter(t => t.count === modalFilterCount);
+  if (modalFilterCollection !== 'All') {
+    filtered = filtered.filter(t => t.collection.toLowerCase() === modalFilterCollection.toLowerCase());
+  }
+
+  if (filtered.length === 0) {
+    tmGrid.innerHTML = `<div class="tm-empty">No templates found in ${modalFilterCollection} with ${modalFilterCount} photos.</div>`;
+    return;
+  }
+
+  filtered.forEach(tmpl => {
+    const tile = document.createElement('button');
+    tile.className = `tm-tile ${currentCard && currentCard.layoutId === tmpl.id ? 'active' : ''}`;
+
+    const miniCanvas = document.createElement('canvas');
+    miniCanvas.width = 160;
+    miniCanvas.height = Math.round(160 * (1920 / 1080));
+    drawTemplatePreview(miniCanvas, tmpl);
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'tm-tile-name';
+    titleEl.textContent = tmpl.name;
+
+    const colEl = document.createElement('div');
+    colEl.className = 'tm-tile-col';
+    colEl.textContent = `${tmpl.collection} • ${tmpl.count} photos`;
+
+    tile.appendChild(miniCanvas);
+    tile.appendChild(titleEl);
+    tile.appendChild(colEl);
+
+    tile.onclick = () => {
+      applyTemplateToActiveCard(tmpl);
+      closeTemplateModal();
+    };
+
+    tmGrid.appendChild(tile);
+  });
+}
+
+function drawTemplatePreview(canvas, tmpl) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  const pad = 6;
+  const gap = 3;
+  const contentW = w - pad * 2;
+  const contentH = h - pad * 2;
+
+  tmpl.slots.forEach(s => {
+    const sx = pad + s.x * contentW;
+    const sy = pad + s.y * contentH;
+    const sw = s.w * contentW - (s.w < 1 ? gap / 2 : 0);
+    const sh = s.h * contentH - (s.h < 1 ? gap / 2 : 0);
+
+    ctx.fillStyle = '#e2e6ea';
+    ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = '#c5cbd3';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, sy, sw, sh);
+  });
+}
+
+function applyTemplateToActiveCard(tmpl) {
+  const card = state.cards[state.activeCardIndex];
+  if (!card) return;
+
+  const currentCount = card.photoIds.length;
+  const targetCount = tmpl.count;
+
+  if (targetCount !== currentCount) {
+    adjustCardPhotoCount(state.activeCardIndex, targetCount);
+  }
+
+  const photos = card.photoIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
+  const { assignment } = scoreLayoutMatching(tmpl, photos);
+
+  card.layoutId = tmpl.id;
+  card.photoIds = assignment.map(i => photos[i].id);
+
+  renderAllCards();
+  showToast(`Applied: ${tmpl.name}`);
+}
+
+function adjustCardPhotoCount(cardIndex, targetCount) {
+  const card = state.cards[cardIndex];
+  const diff = targetCount - card.photoIds.length;
+
+  if (diff > 0) {
+    // Borrow photos from following cards or unused photos
+    for (let c = cardIndex + 1; c < state.cards.length && card.photoIds.length < targetCount; c++) {
+      const nextCard = state.cards[c];
+      while (nextCard.photoIds.length > 2 && card.photoIds.length < targetCount) {
+        card.photoIds.push(nextCard.photoIds.shift());
+      }
+    }
+  } else if (diff < 0) {
+    // Move extra photos to next card or create a new card
+    const excess = card.photoIds.splice(targetCount);
+    if (cardIndex + 1 < state.cards.length) {
+      state.cards[cardIndex + 1].photoIds.unshift(...excess);
+    } else {
+      state.cards.push({
+        id: 'card_' + state.cards.length,
+        photoIds: excess,
+        layoutId: 'cs-01-hero',
+        size: excess.length,
+        slotTransforms: excess.map(() => ({ zoom: 1.0, panX: 0, panY: 0 }))
+      });
+    }
+  }
+}
+
+/**
+ * High-Res Export
  */
 function downloadSingleCard(cardIndex) {
   const card = state.cards[cardIndex];
@@ -1488,9 +2076,6 @@ function downloadCurrentCard() {
   downloadSingleCard(state.activeCardIndex);
 }
 
-/**
- * Export All Cards as ZIP
- */
 async function exportAllCardsZip() {
   if (state.cards.length === 0) {
     showToast('No cards to export!');
@@ -1521,7 +2106,7 @@ async function exportAllCardsZip() {
 
   const link = document.createElement('a');
   link.href = zipUrl;
-  link.download = `CollageStudio-Stories-${new Date().toISOString().slice(0, 10)}.zip`;
+  link.download = `KTcollage-Stories-${new Date().toISOString().slice(0, 10)}.zip`;
   link.click();
 
   setTimeout(() => URL.revokeObjectURL(zipUrl), 30000);
@@ -1529,33 +2114,24 @@ async function exportAllCardsZip() {
 }
 
 /**
- * Generate Demo Photos:
- * Includes a distinct mix of vertical portraits (Dad, Mom, Boy 1, Boy 2 like user's photo!)
- * and scenic horizontal landscapes, demonstrating automatic orientation matching!
+ * Load Demo Photos with Distinct Landscapes & Vertical Family Portraits
  */
 function loadSamplePhotos() {
-  showToast('Generating demo photos with vertical portraits & horizontal landscapes...');
-  
+  showToast('Generating demo photos...');
+
   const sampleDefinitions = [
-    // 4 Vertical Family Portraits (similar to user's photo)
     { name: 'Dad Portrait', w: 800, h: 1200, g1: '#4a3b32', g2: '#8b6b4f', isPortrait: true, tag: 'Dad' },
     { name: 'Mom Portrait', w: 800, h: 1200, g1: '#543d3b', g2: '#9a7065', isPortrait: true, tag: 'Mom' },
     { name: 'Son 1 Portrait', w: 800, h: 1200, g1: '#5a6245', g2: '#a4ab80', isPortrait: true, tag: 'Son 1' },
     { name: 'Son 2 Portrait', w: 800, h: 1200, g1: '#634b35', g2: '#ba946e', isPortrait: true, tag: 'Son 2' },
-    
-    // Horizontal Landscapes
     { name: 'White Picket Fence', w: 1400, h: 800, g1: '#2b3a42', g2: '#4f6d7a', isLandscape: true, tag: 'Fence' },
-    { name: 'Autumn Street & Speed 25', w: 1400, h: 800, g1: '#633d2e', g2: '#a86544', isLandscape: true, tag: 'Street' },
+    { name: 'Autumn Street', w: 1400, h: 800, g1: '#633d2e', g2: '#a86544', isLandscape: true, tag: 'Street' },
     { name: 'Irish Coastline', w: 1400, h: 800, g1: '#37474f', g2: '#78909c', isLandscape: true, tag: 'Coast' },
     { name: 'Alpine Ridge', w: 1400, h: 800, g1: '#263238', g2: '#546e7a', isLandscape: true, tag: 'Mountain' },
-    
-    // More Vertical Portraits
     { name: 'Solo Laughing Portrait', w: 800, h: 1200, g1: '#423838', g2: '#8d7575', isPortrait: true, tag: 'Solo' },
     { name: 'Candid Walk Portrait', w: 800, h: 1200, g1: '#3e4147', g2: '#7a818c', isPortrait: true, tag: 'Walk' },
     { name: 'Brothers Together', w: 800, h: 1200, g1: '#473d31', g2: '#968168', isPortrait: true, tag: 'Brothers' },
     { name: 'Front Porch Smile', w: 800, h: 1200, g1: '#324b42', g2: '#689686', isPortrait: true, tag: 'Porch' },
-
-    // More Horizontal Landscapes & Scenes
     { name: 'Sunset Meadow', w: 1400, h: 800, g1: '#e58045', g2: '#eed19a', isLandscape: true, tag: 'Meadow' },
     { name: 'City Park Path', w: 1400, h: 800, g1: '#134e5e', g2: '#71b280', isLandscape: true, tag: 'Park' },
     { name: 'Lakeside Dock', w: 1400, h: 800, g1: '#203a43', g2: '#2c5364', isLandscape: true, tag: 'Lake' },
@@ -1575,7 +2151,6 @@ function loadSamplePhotos() {
     ctx.fillRect(0, 0, item.w, item.h);
 
     if (item.isPortrait) {
-      // Silhouette / portrait avatar
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.beginPath();
       ctx.arc(item.w / 2, item.h * 0.35, item.w * 0.22, 0, Math.PI * 2);
@@ -1585,13 +2160,11 @@ function loadSamplePhotos() {
       ctx.ellipse(item.w / 2, item.h * 0.75, item.w * 0.38, item.h * 0.28, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Portrait badge
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 36px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(item.tag, item.w / 2, item.h * 0.4);
     } else {
-      // Landscape horizon & hills
       ctx.fillStyle = 'rgba(255,255,255,0.15)';
       ctx.beginPath();
       ctx.moveTo(0, item.h * 0.6);
@@ -1622,16 +2195,14 @@ function loadSamplePhotos() {
       width: item.w,
       height: item.h,
       aspect: aspect,
-      orientation: aspect < 0.88 ? 'vertical' : (aspect > 1.15 ? 'horizontal' : 'square'),
-      panX: 0,
-      panY: 0
+      orientation: aspect < 0.88 ? 'vertical' : (aspect > 1.15 ? 'horizontal' : 'square')
     };
   });
 
   state.photos = generated;
   updateThumbnails();
   partitionPhotosIntoCards();
-  showToast('Loaded demo photos! Vertical portraits automatically placed in vertical frames.');
+  showToast('Loaded demo photos with Unfold & Classico templates!');
 }
 
 let toastTimeout;
