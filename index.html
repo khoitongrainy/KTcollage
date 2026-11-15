@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aesthetic Collage & Story Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,800;1,400&family=Space+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="jszip.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 11h18M11 3v18"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>CollageStudio</h1>
+          <span class="badge">Editorial Multi-Card Story Generator</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-load-sample" class="btn btn-secondary" title="Load sample demo photos">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+          Demo Photos
+        </button>
+        <button id="btn-shuffle-all" class="btn btn-secondary" title="Shuffle layouts for all cards">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 3 21 3 21 8"/>
+            <line x1="4" y1="20" x2="21" y2="3"/>
+            <polyline points="21 16 21 21 16 21"/>
+            <line x1="15" y1="15" x2="21" y2="21"/>
+            <line x1="4" y1="4" x2="9" y2="9"/>
+          </svg>
+          Shuffle All Layouts
+        </button>
+        <button id="btn-export-zip" class="btn btn-primary" title="Export all cards as High-Res PNG in a ZIP">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export All Cards (ZIP)
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="workspace">
+      <!-- Left Sidebar: Controls & Photos -->
+      <aside class="sidebar">
+        <!-- Upload Section -->
+        <div class="panel upload-panel">
+          <div class="upload-dropzone" id="dropzone">
+            <input type="file" id="file-input" multiple accept="image/*" class="file-input-hidden">
+            <div class="upload-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="3" y="3" width="18" height="18" rx="3" ry="3"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </div>
+            <p class="drop-primary">Drop 15–30 Photos here</p>
+            <p class="drop-sub">or <span class="highlight">browse from computer</span></p>
+          </div>
+
+          <div class="photo-summary" id="photo-summary" style="display:none;">
+            <div class="summary-meta">
+              <span id="photo-count-badge">0 photos loaded</span>
+              <button id="btn-clear-photos" class="btn-link">Clear all</button>
+            </div>
+            <!-- Thumbnail strip -->
+            <div class="thumbnails-container" id="thumbnail-strip"></div>
+          </div>
+        </div>
+
+        <!-- Style / Theme Presets (Matching user's screenshot: CLASICO, PAPER, ZODIAC, NOIR, MINIMAL) -->
+        <div class="panel">
+          <h3 class="panel-title">Aesthetic Theme</h3>
+          <div class="theme-pill-selector" id="theme-selector">
+            <button class="theme-pill active" data-theme="clasico">Clasico</button>
+            <button class="theme-pill" data-theme="paper">Paper</button>
+            <button class="theme-pill" data-theme="noir">Noir Studio</button>
+            <button class="theme-pill" data-theme="film">Film 35mm</button>
+            <button class="theme-pill" data-theme="warm">Warm Terra</button>
+            <button class="theme-pill" data-theme="minimal">Minimalist</button>
+          </div>
+        </div>
+
+        <!-- Format & Sizing -->
+        <div class="panel">
+          <h3 class="panel-title">Story Format</h3>
+          <div class="aspect-ratio-selector" id="ratio-selector">
+            <button class="ratio-btn active" data-ratio="9:16">
+              <span class="ratio-box r-9-16"></span>
+              <span class="ratio-label">9:16 Story</span>
+            </button>
+            <button class="ratio-btn" data-ratio="4:5">
+              <span class="ratio-box r-4-5"></span>
+              <span class="ratio-label">4:5 Portrait</span>
+            </button>
+            <button class="ratio-btn" data-ratio="1:1">
+              <span class="ratio-box r-1-1"></span>
+              <span class="ratio-label">1:1 Square</span>
+            </button>
+            <button class="ratio-btn" data-ratio="16:9">
+              <span class="ratio-box r-16-9"></span>
+              <span class="ratio-label">16:9 Wide</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Auto-Distribution Strategy -->
+        <div class="panel">
+          <h3 class="panel-title">Layout Distribution</h3>
+          <div class="control-row">
+            <label for="photos-per-card">Photos per card</label>
+            <select id="photos-per-card" class="select-input">
+              <option value="smart" selected>Smart Dynamic (2–5 mixed)</option>
+              <option value="4">4 Photos per card</option>
+              <option value="3">3 Photos per card</option>
+              <option value="2">2 Photos per card</option>
+              <option value="5">5 Photos per card</option>
+            </select>
+          </div>
+          
+          <div class="control-row" style="margin-top: 10px;">
+            <label for="toggle-orientation-match">Match Orientation</label>
+            <label class="switch">
+              <input type="checkbox" id="toggle-orientation-match" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <p class="panel-hint">Vertical photos ↕ automatically map to vertical frames; horizontal ↔ to horizontal frames.</p>
+
+          <div class="control-row" style="margin-top: 10px;">
+            <label for="select-fit-mode">Photo Fit Mode</label>
+            <select id="select-fit-mode" class="select-input">
+              <option value="cover" selected>Fill Frame (Cover)</option>
+              <option value="contain">Fit Whole Photo (No Crop)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Spacing & Styling sliders -->
+        <div class="panel">
+          <h3 class="panel-title">Spacing & Aesthetics</h3>
+          
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-gap">Photo Gap</label>
+              <span id="val-gap" class="slider-val">12px</span>
+            </div>
+            <input type="range" id="slider-gap" min="0" max="36" value="12" class="range-slider">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-margin">Outer Padding</label>
+              <span id="val-margin" class="slider-val">20px</span>
+            </div>
+            <input type="range" id="slider-margin" min="0" max="60" value="20" class="range-slider">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-radius">Corner Radius</label>
+              <span id="val-radius" class="slider-val">4px</span>
+            </div>
+            <input type="range" id="slider-radius" min="0" max="30" value="4" class="range-slider">
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="slider-bg">Card Background</label>
+              <input type="color" id="picker-bg" value="#ffffff" class="color-picker-input">
+            </div>
+          </div>
+        </div>
+
+        <!-- Editorial Typography Options -->
+        <div class="panel">
+          <div class="panel-title-with-toggle">
+            <h3 class="panel-title">Editorial Typography</h3>
+            <label class="switch">
+              <input type="checkbox" id="toggle-typography" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="typography-fields" id="typography-controls">
+            <div class="field-item">
+              <label for="input-kicker">Italic Subheader</label>
+              <input type="text" id="input-kicker" value="adventuring in" class="text-input" placeholder="e.g. adventuring in, chapter one">
+            </div>
+            <div class="field-item">
+              <label for="input-headline">Main Headline</label>
+              <input type="text" id="input-headline" value="MEMORIES" class="text-input" placeholder="e.g. IRELAND, SUMMER 2026">
+            </div>
+            <div class="field-item">
+              <label for="input-body">Journal Note</label>
+              <textarea id="input-body" class="text-area" rows="2" placeholder="Short story text...">The past couple of days have been a dream. Cherishing every quiet moment.</textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export Resolution -->
+        <div class="panel">
+          <h3 class="panel-title">Export Settings</h3>
+          <div class="control-row">
+            <label for="export-scale">Quality Resolution</label>
+            <select id="export-scale" class="select-input">
+              <option value="1">Standard (1080px wide)</option>
+              <option value="2" selected>Ultra Crisp 2X (2160px Retina)</option>
+            </select>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Preview Canvas Area -->
+      <main class="preview-area">
+        <div class="preview-toolbar">
+          <div class="toolbar-left">
+            <span class="view-status" id="cards-count-info">0 cards generated</span>
+          </div>
+          <div class="toolbar-center">
+            <button class="nav-btn" id="btn-prev-card" title="Previous card">‹</button>
+            <span class="current-card-indicator" id="card-indicator">Card 1 of 1</span>
+            <button class="nav-btn" id="btn-next-card" title="Next card">›</button>
+          </div>
+          <div class="toolbar-right">
+            <button class="btn btn-sm btn-secondary" id="btn-shuffle-current" title="Shuffle this card's layout">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 3 21 3 21 8"/>
+                <line x1="4" y1="20" x2="21" y2="3"/>
+                <polyline points="21 16 21 21 16 21"/>
+              </svg>
+              Shuffle Layout
+            </button>
+            <button class="btn btn-sm btn-secondary" id="btn-download-current" title="Download this card as PNG">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export This Card
+            </button>
+          </div>
+        </div>
+
+        <!-- Cards Viewport: Side-by-side Carousel / Grid Mode -->
+        <div class="cards-deck-wrapper" id="deck-wrapper">
+          <div class="cards-deck" id="cards-deck">
+            <!-- Dynamic story card canvases inserted here -->
+          </div>
+        </div>
+
+        <!-- Bottom Gallery Carousel Navigation of all cards -->
+        <div class="story-strip" id="story-strip">
+          <!-- Mini thumbnails of each card -->
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
