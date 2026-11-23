@@ -110,26 +110,42 @@
           </div>
         </div>
 
-        <!-- Format -->
+        <!-- Format / Canvas Ratio & Size -->
         <div class="panel">
-          <h3 class="panel-title">Story Format</h3>
+          <div class="panel-title-with-toggle">
+            <h3 class="panel-title">Canvas Ratio &amp; Size</h3>
+            <div class="ratio-header-actions">
+              <span class="ratio-dim-badge" id="active-dim-badge">1080×1920</span>
+              <button class="btn-flip-ratio" id="btn-flip-ratio" title="Swap Portrait ↔ Landscape">⇄ Flip</button>
+            </div>
+          </div>
+
+          <div class="ratio-filter-tabs" id="ratio-filter-tabs">
+            <button class="ratio-tab active" data-cat="all">All</button>
+            <button class="ratio-tab" data-cat="portrait">Portrait ↕</button>
+            <button class="ratio-tab" data-cat="landscape">Landscape ↔</button>
+            <button class="ratio-tab" data-cat="print">Print</button>
+            <button class="ratio-tab" data-cat="custom">Custom</button>
+          </div>
+
           <div class="aspect-ratio-selector" id="ratio-selector">
-            <button class="ratio-btn active" data-ratio="9:16">
-              <span class="ratio-box r-9-16"></span>
-              <span class="ratio-label">9:16 Story</span>
-            </button>
-            <button class="ratio-btn" data-ratio="4:5">
-              <span class="ratio-box r-4-5"></span>
-              <span class="ratio-label">4:5 Portrait</span>
-            </button>
-            <button class="ratio-btn" data-ratio="1:1">
-              <span class="ratio-box r-1-1"></span>
-              <span class="ratio-label">1:1 Square</span>
-            </button>
-            <button class="ratio-btn" data-ratio="16:9">
-              <span class="ratio-box r-16-9"></span>
-              <span class="ratio-label">16:9 Wide</span>
-            </button>
+            <!-- Dynamically populated from DIMENSIONS in app.js -->
+          </div>
+
+          <!-- Custom Size Inputs -->
+          <div class="custom-size-box" id="custom-size-box" style="display:none;">
+            <div class="custom-size-row">
+              <div class="custom-size-field">
+                <label for="input-custom-w">Width (px)</label>
+                <input type="number" id="input-custom-w" value="1080" min="300" max="6000" step="10" class="text-input">
+              </div>
+              <span class="custom-size-x">×</span>
+              <div class="custom-size-field">
+                <label for="input-custom-h">Height (px)</label>
+                <input type="number" id="input-custom-h" value="1440" min="300" max="6000" step="10" class="text-input">
+              </div>
+            </div>
+            <p class="panel-hint" id="custom-ratio-info">Ratio: 3:4 (0.75) · Min 300px, Max 6000px</p>
           </div>
         </div>
 
@@ -234,10 +250,11 @@
         <div class="panel">
           <h3 class="panel-title">Export Settings</h3>
           <div class="control-row">
-            <label for="export-scale">Quality Resolution</label>
+            <label for="export-scale">Resolution</label>
             <select id="export-scale" class="select-input">
-              <option value="1">Standard (1080px wide)</option>
-              <option value="2" selected>Ultra Crisp 2X (2160px)</option>
+              <option value="1">1× Standard (1080×1920)</option>
+              <option value="2" selected>2× Ultra Crisp (2160×3840)</option>
+              <option value="3">3× Print HD (3240×5760)</option>
             </select>
           </div>
         </div>

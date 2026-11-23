@@ -27,6 +27,9 @@ const state = {
   settings: {
     theme: 'clasico',
     aspectRatio: '9:16',
+    customWidth: 1080,
+    customHeight: 1440,
+    ratioFilter: 'all',
     collection: 'auto',
     gap: 12,
     margin: 20,
@@ -110,12 +113,84 @@ const THEMES = {
   }
 };
 
-const DIMENSIONS = {
-  '9:16': { width: 1080, height: 1920, previewWidth: 320, previewHeight: 568 },
-  '4:5':  { width: 1080, height: 1350, previewWidth: 320, previewHeight: 400 },
-  '1:1':  { width: 1080, height: 1080, previewWidth: 340, previewHeight: 340 },
-  '16:9': { width: 1920, height: 1080, previewWidth: 500, previewHeight: 281 }
-};
+// Rich Aspect Ratio & Size Presets (Portrait, Square, Landscape, Print, Custom)
+const RATIO_PRESETS = [
+  // Portrait
+  { id: '9:16',     label: '9:16',    sub: 'Story',    width: 1080, height: 1920, cats: ['portrait'],          flip: '16:9' },
+  { id: '4:5',      label: '4:5',     sub: 'IG Post',  width: 1080, height: 1350, cats: ['portrait'],          flip: '5:4'  },
+  { id: '3:4',      label: '3:4',     sub: 'Portrait', width: 1080, height: 1440, cats: ['portrait'],          flip: '4:3'  },
+  { id: '2:3',      label: '2:3',     sub: '4×6" Photo',width: 1080, height: 1620, cats: ['portrait', 'print'], flip: '3:2'  },
+  // Square & Landscape popular
+  { id: '1:1',      label: '1:1',     sub: 'Square',   width: 1080, height: 1080, cats: ['portrait', 'landscape'], flip: '1:1' },
+  { id: '4:3',      label: '4:3',     sub: 'Classic',  width: 1440, height: 1080, cats: ['landscape'],         flip: '3:4'  },
+  { id: '3:2',      label: '3:2',     sub: 'DSLR 6×4', width: 1620, height: 1080, cats: ['landscape', 'print'],flip: '2:3'  },
+  { id: '16:9',     label: '16:9',    sub: 'HD / YT',  width: 1920, height: 1080, cats: ['landscape'],         flip: '9:16' },
+  // More Portrait / Print / Cinematic
+  { id: '5:7',      label: '5:7',     sub: '5×7" Print',width: 1080, height: 1512, cats: ['portrait', 'print'], flip: '7:5'  },
+  { id: '7:5',      label: '7:5',     sub: '7×5" Print',width: 1512, height: 1080, cats: ['landscape', 'print'],flip: '5:7'  },
+  { id: '5:4',      label: '5:4',     sub: '10×8"',    width: 1350, height: 1080, cats: ['landscape', 'print'],flip: '4:5'  },
+  { id: '21:9',     label: '21:9',    sub: 'Cinema',   width: 2520, height: 1080, cats: ['landscape'],         flip: '9:21' },
+  { id: '9:21',     label: '9:21',    sub: 'Tall',     width: 1080, height: 2520, cats: ['portrait'],          flip: '21:9' },
+  { id: 'A4-P',     label: 'A4 ↕',    sub: 'Print ↕',  width: 1240, height: 1754, cats: ['portrait', 'print'], flip: 'A4-L' },
+  { id: 'A4-L',     label: 'A4 ↔',    sub: 'Print ↔',  width: 1754, height: 1240, cats: ['landscape', 'print'],flip: 'A4-P' },
+  { id: 'FB-Cover', label: 'Cover',   sub: 'Banner',   width: 1640, height: 624,  cats: ['landscape'],         flip: 'custom' }
+];
+
+const DIMENSIONS = Object.fromEntries(RATIO_PRESETS.map(p => [p.id, p]));
+
+/**
+ * Compute active canvas & preview dimensions for any preset or custom WxH
+ */
+function getActiveDimensions() {
+  let width, height, label;
+  if (state.settings.aspectRatio === 'custom') {
+    width = Math.max(300, Math.min(6000, parseInt(state.settings.customWidth) || 1080));
+    height = Math.max(300, Math.min(6000, parseInt(state.settings.customHeight) || 1440));
+    label = `Custom (${width}×${height})`;
+  } else {
+    const preset = DIMENSIONS[state.settings.aspectRatio] || DIMENSIONS['9:16'];
+    width = preset.width;
+    height = preset.height;
+    label = preset.label;
+  }
+
+  // Compute balanced preview box that fits neatly in the center deck
+  const ratio = width / height;
+  const maxW = 520;
+  const maxH = 540;
+  const targetArea = 350 * 490;
+  let pw = Math.sqrt(targetArea * ratio);
+  let ph = pw / ratio;
+  if (pw > maxW) {
+    pw = maxW;
+    ph = pw / ratio;
+  }
+  if (ph > maxH) {
+    ph = maxH;
+    pw = ph * ratio;
+  }
+
+  return {
+    width,
+    height,
+    label,
+    previewWidth: Math.max(140, Math.round(pw)),
+    previewHeight: Math.max(140, Math.round(ph))
+  };
+}
+
+function getScaleRatio(cw, ch) {
+  return Math.min(cw, ch) / 1080;
+}
+
+function simplifyRatio(w, h) {
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const d = gcd(Math.round(w), Math.round(h)) || 1;
+  const rw = Math.round(w / d);
+  const rh = Math.round(h / d);
+  if (rw <= 32 && rh <= 32) return `${rw}:${rh}`;
+  return `${(w / h).toFixed(2)}:1`;
+}
 
 /**
  * Comprehensive Unfold & Classico Template Catalog
@@ -486,6 +561,13 @@ const btnZoomReset = document.getElementById('btn-zoom-reset');
 const selectCollection = document.getElementById('select-collection');
 const themeSelector = document.getElementById('theme-selector');
 const ratioSelector = document.getElementById('ratio-selector');
+const ratioFilterTabs = document.getElementById('ratio-filter-tabs');
+const btnFlipRatio = document.getElementById('btn-flip-ratio');
+const activeDimBadge = document.getElementById('active-dim-badge');
+const customSizeBox = document.getElementById('custom-size-box');
+const inputCustomW = document.getElementById('input-custom-w');
+const inputCustomH = document.getElementById('input-custom-h');
+const customRatioInfo = document.getElementById('custom-ratio-info');
 const photosPerCardSelect = document.getElementById('photos-per-card');
 const toggleOrientationMatch = document.getElementById('toggle-orientation-match');
 const selectFitMode = document.getElementById('select-fit-mode');
@@ -588,16 +670,58 @@ function init() {
     renderAllCards();
   });
 
-  // Aspect ratio
+  // Aspect ratio & size selector
+  renderRatioButtons();
+  updateDimensionReadouts();
+
+  if (ratioFilterTabs) {
+    ratioFilterTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.ratio-tab');
+      if (!tab) return;
+      const cat = tab.dataset.cat;
+      state.settings.ratioFilter = cat;
+      document.querySelectorAll('.ratio-tab').forEach(t => t.classList.toggle('active', t === tab));
+
+      if (cat === 'custom') {
+        if (state.settings.aspectRatio !== 'custom') {
+          const cur = getActiveDimensions();
+          state.settings.customWidth = cur.width;
+          state.settings.customHeight = cur.height;
+          if (inputCustomW) inputCustomW.value = cur.width;
+          if (inputCustomH) inputCustomH.value = cur.height;
+        }
+        applyAspectRatio('custom');
+      } else {
+        if (customSizeBox) customSizeBox.style.display = state.settings.aspectRatio === 'custom' ? 'block' : 'none';
+        renderRatioButtons();
+      }
+    });
+  }
+
   ratioSelector.addEventListener('click', (e) => {
     const btn = e.target.closest('.ratio-btn');
     if (!btn) return;
-    document.querySelectorAll('.ratio-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.settings.aspectRatio = btn.dataset.ratio;
+    applyAspectRatio(btn.dataset.ratio);
+  });
+
+  if (btnFlipRatio) {
+    btnFlipRatio.addEventListener('click', flipOrientation);
+  }
+
+  const handleCustomSizeInput = () => {
+    const w = parseInt(inputCustomW.value);
+    const h = parseInt(inputCustomH.value);
+    if (!w || !h || w < 300 || h < 300) return;
+    state.settings.customWidth = Math.min(6000, w);
+    state.settings.customHeight = Math.min(6000, h);
+    state.settings.aspectRatio = 'custom';
+    updateDimensionReadouts();
     recomputeAllCardLayouts();
     renderAllCards();
-  });
+  };
+
+  if (inputCustomW) inputCustomW.addEventListener('change', handleCustomSizeInput);
+  if (inputCustomH) inputCustomH.addEventListener('change', handleCustomSizeInput);
 
   // Distribution & Orientation Match
   photosPerCardSelect.addEventListener('change', (e) => {
@@ -915,11 +1039,129 @@ function selectSlot(cardIndex, slotIndex) {
 }
 
 /**
+ * Ratio & Canvas Size UI Helpers
+ */
+function renderRatioButtons() {
+  if (!ratioSelector) return;
+  const filter = state.settings.ratioFilter || 'all';
+  ratioSelector.innerHTML = '';
+
+  if (filter === 'custom') {
+    ratioSelector.style.display = 'none';
+    if (customSizeBox) customSizeBox.style.display = 'block';
+    return;
+  }
+
+  ratioSelector.style.display = 'grid';
+  if (customSizeBox) {
+    customSizeBox.style.display = state.settings.aspectRatio === 'custom' ? 'block' : 'none';
+  }
+
+  const list = filter === 'all'
+    ? RATIO_PRESETS
+    : RATIO_PRESETS.filter(p => p.cats.includes(filter));
+
+  list.forEach(preset => {
+    const btn = document.createElement('button');
+    btn.className = `ratio-btn ${state.settings.aspectRatio === preset.id ? 'active' : ''}`;
+    btn.dataset.ratio = preset.id;
+    btn.title = `${preset.label} (${preset.sub}) — ${preset.width} × ${preset.height} px`;
+
+    // Proportional miniature rectangle icon (fits inside 24x22 box)
+    const r = preset.width / preset.height;
+    let bw, bh;
+    if (r >= 1) {
+      bw = 22;
+      bh = Math.max(8, Math.round(22 / r));
+    } else {
+      bh = 22;
+      bw = Math.max(9, Math.round(22 * r));
+    }
+
+    btn.innerHTML = `
+      <span class="ratio-icon-wrap">
+        <span class="ratio-box" style="width:${bw}px;height:${bh}px;"></span>
+      </span>
+      <span class="ratio-label">${preset.label}</span>
+      <span class="ratio-sub">${preset.sub}</span>
+    `;
+    ratioSelector.appendChild(btn);
+  });
+}
+
+function applyAspectRatio(ratioId) {
+  state.settings.aspectRatio = ratioId;
+  if (customSizeBox) {
+    customSizeBox.style.display = ratioId === 'custom' ? 'block' : 'none';
+  }
+  renderRatioButtons();
+  updateDimensionReadouts();
+  recomputeAllCardLayouts();
+  renderAllCards();
+
+  const dim = getActiveDimensions();
+  showToast(`Canvas size: ${dim.label} (${dim.width}×${dim.height}px)`);
+}
+
+function flipOrientation() {
+  if (state.settings.aspectRatio === 'custom') {
+    const tmp = state.settings.customWidth;
+    state.settings.customWidth = state.settings.customHeight;
+    state.settings.customHeight = tmp;
+    if (inputCustomW) inputCustomW.value = state.settings.customWidth;
+    if (inputCustomH) inputCustomH.value = state.settings.customHeight;
+    applyAspectRatio('custom');
+    return;
+  }
+
+  const cur = DIMENSIONS[state.settings.aspectRatio];
+  if (!cur) return;
+
+  if (cur.flip === 'custom') {
+    state.settings.customWidth = cur.height;
+    state.settings.customHeight = cur.width;
+    if (inputCustomW) inputCustomW.value = state.settings.customWidth;
+    if (inputCustomH) inputCustomH.value = state.settings.customHeight;
+    applyAspectRatio('custom');
+  } else if (cur.flip && cur.flip !== cur.id) {
+    // Switch filter tab back to 'all' if flipped ratio isn't in current filter
+    const target = DIMENSIONS[cur.flip];
+    if (state.settings.ratioFilter !== 'all' && target && !target.cats.includes(state.settings.ratioFilter)) {
+      state.settings.ratioFilter = 'all';
+      document.querySelectorAll('.ratio-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.cat === 'all');
+      });
+    }
+    applyAspectRatio(cur.flip);
+  } else {
+    showToast('1:1 Square is already symmetrical');
+  }
+}
+
+function updateDimensionReadouts() {
+  const dim = getActiveDimensions();
+  if (activeDimBadge) {
+    activeDimBadge.textContent = `${dim.width}×${dim.height}`;
+  }
+  if (customRatioInfo) {
+    const w = parseInt(state.settings.customWidth) || dim.width;
+    const h = parseInt(state.settings.customHeight) || dim.height;
+    customRatioInfo.textContent = `Ratio: ${simplifyRatio(w, h)} (${(w / h).toFixed(2)}) · 300–6000px`;
+  }
+  if (exportScaleSelect) {
+    const opts = exportScaleSelect.options;
+    if (opts[0]) opts[0].textContent = `1× Standard (${dim.width}×${dim.height})`;
+    if (opts[1]) opts[1].textContent = `2× Ultra Crisp (${dim.width * 2}×${dim.height * 2})`;
+    if (opts[2]) opts[2].textContent = `3× Print HD (${dim.width * 3}×${dim.height * 3})`;
+  }
+}
+
+/**
  * Orientation & Aspect Ratio calculation
  */
 function getSlotAspectRatio(slot) {
-  const dim = DIMENSIONS[state.settings.aspectRatio];
-  const scaleRatio = dim.width / 1080;
+  const dim = getActiveDimensions();
+  const scaleRatio = getScaleRatio(dim.width, dim.height);
   const margin = state.settings.margin * scaleRatio;
   const contentW = dim.width - margin * 2;
   const contentH = dim.height - margin * 2;
@@ -1181,7 +1423,7 @@ function renderAllCards() {
     return;
   }
 
-  const dim = DIMENSIONS[state.settings.aspectRatio];
+  const dim = getActiveDimensions();
 
   state.cards.forEach((card, idx) => {
     const wrapper = document.createElement('div');
@@ -1253,10 +1495,12 @@ function renderAllCards() {
     const stripItem = document.createElement('div');
     stripItem.className = `strip-item ${idx === state.activeCardIndex ? 'active' : ''}`;
     stripItem.dataset.cardIndex = idx;
+    stripItem.style.aspectRatio = `${dim.width} / ${dim.height}`;
 
     const stripCanvas = document.createElement('canvas');
-    stripCanvas.width = 180;
-    stripCanvas.height = Math.round(180 * (dim.height / dim.width));
+    const stripHeight = 140;
+    stripCanvas.height = stripHeight;
+    stripCanvas.width = Math.max(60, Math.round(stripHeight * (dim.width / dim.height)));
     stripItem.appendChild(stripCanvas);
 
     const indexBadge = document.createElement('span');
@@ -1335,8 +1579,8 @@ function updateSlotSelectionIndicators() {
 }
 
 function positionIndicatorOnContainer(el, slot, container) {
-  const dim = DIMENSIONS[state.settings.aspectRatio];
-  const scaleRatio = dim.width / 1080;
+  const dim = getActiveDimensions();
+  const scaleRatio = getScaleRatio(dim.width, dim.height);
   const marginPx = state.settings.margin * scaleRatio;
   const gapPx = state.settings.gap * scaleRatio;
   const contentW = dim.width - marginPx * 2;
@@ -1427,9 +1671,11 @@ function getSlotAtCoords(canvas, cardIndex, clientX, clientY) {
   if (!card) return -1;
   const layout = getTemplateById(card.layoutId);
 
-  const dim = DIMENSIONS[state.settings.aspectRatio];
-  const marginNormX = state.settings.margin / dim.width;
-  const marginNormY = state.settings.margin / dim.height;
+  const dim = getActiveDimensions();
+  const scaleRatio = getScaleRatio(dim.width, dim.height);
+  const marginPx = state.settings.margin * scaleRatio;
+  const marginNormX = marginPx / dim.width;
+  const marginNormY = marginPx / dim.height;
   const contentW = 1 - marginNormX * 2;
   const contentH = 1 - marginNormY * 2;
 
@@ -1630,7 +1876,7 @@ function renderCardToCanvas(card, canvas, isThumbnail = false) {
     drawFilmDetails(ctx, cw, ch, card);
   }
 
-  const scaleRatio = cw / 1080;
+  const scaleRatio = getScaleRatio(cw, ch);
   const margin = state.settings.margin * scaleRatio;
   const gap = state.settings.gap * scaleRatio;
   const radius = state.settings.radius * scaleRatio;
@@ -1942,13 +2188,16 @@ function renderModalGrid() {
     return;
   }
 
+  const dim = getActiveDimensions();
+  const previewRatio = Math.max(0.4, Math.min(2.2, dim.height / dim.width));
+
   filtered.forEach(tmpl => {
     const tile = document.createElement('button');
     tile.className = `tm-tile ${currentCard && currentCard.layoutId === tmpl.id ? 'active' : ''}`;
 
     const miniCanvas = document.createElement('canvas');
     miniCanvas.width = 160;
-    miniCanvas.height = Math.round(160 * (1920 / 1080));
+    miniCanvas.height = Math.round(160 * previewRatio);
     drawTemplatePreview(miniCanvas, tmpl);
 
     const titleEl = document.createElement('div');
@@ -2056,7 +2305,7 @@ function downloadSingleCard(cardIndex) {
   const card = state.cards[cardIndex];
   if (!card) return;
 
-  const baseDim = DIMENSIONS[state.settings.aspectRatio];
+  const baseDim = getActiveDimensions();
   const scale = state.settings.exportScale || 2;
   const exportCanvas = document.createElement('canvas');
   exportCanvas.width = baseDim.width * scale;
@@ -2064,12 +2313,13 @@ function downloadSingleCard(cardIndex) {
 
   renderCardToCanvas(card, exportCanvas);
 
+  const ratioTag = state.settings.aspectRatio.replace(':', 'x');
   const link = document.createElement('a');
-  link.download = `story-card-${cardIndex + 1}.png`;
+  link.download = `kt-collage-${cardIndex + 1}-${ratioTag}.png`;
   link.href = exportCanvas.toDataURL('image/png');
   link.click();
 
-  showToast(`Exported Story Card ${cardIndex + 1} (${exportCanvas.width}x${exportCanvas.height}px)`);
+  showToast(`Exported Story Card ${cardIndex + 1} (${exportCanvas.width}×${exportCanvas.height}px)`);
 }
 
 function downloadCurrentCard() {
@@ -2085,8 +2335,9 @@ async function exportAllCardsZip() {
   showToast(`Generating ZIP for ${state.cards.length} cards...`);
 
   const zip = new JSZip();
-  const baseDim = DIMENSIONS[state.settings.aspectRatio];
+  const baseDim = getActiveDimensions();
   const scale = state.settings.exportScale || 2;
+  const ratioTag = state.settings.aspectRatio.replace(':', 'x');
 
   for (let i = 0; i < state.cards.length; i++) {
     const card = state.cards[i];
@@ -2098,7 +2349,7 @@ async function exportAllCardsZip() {
 
     const dataUrl = exportCanvas.toDataURL('image/png');
     const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-    zip.file(`story-card-${String(i + 1).padStart(2, '0')}.png`, base64Data, { base64: true });
+    zip.file(`kt-collage-${String(i + 1).padStart(2, '0')}-${ratioTag}.png`, base64Data, { base64: true });
   }
 
   const content = await zip.generateAsync({ type: 'blob' });
