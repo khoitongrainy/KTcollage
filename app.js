@@ -9,6 +9,8 @@ const state = {
   cards: [],  // Array of { id, photoIds: [], layoutId, slotTransforms: [{ zoom, panX, panY }] }
   activeCardIndex: 0,
   selectedSlot: null, // { cardIndex, slotIndex }
+  swapSource: null,   // { cardIndex, slotIndex } when tap-to-swap mode is active
+  mobileTab: 'preview', // 'preview' | 'photos' | 'style' | 'edit'
   dragState: {
     active: false,
     mode: null, // 'pan' or 'swap'
@@ -154,11 +156,31 @@ function getActiveDimensions() {
     label = preset.label;
   }
 
-  // Compute balanced preview box that fits neatly in the center deck
+  // Compute balanced preview box that fits neatly in desktop or mobile viewport
   const ratio = width / height;
-  const maxW = 520;
-  const maxH = 540;
-  const targetArea = 350 * 490;
+  const vw = window.innerWidth || 1200;
+  const vh = window.innerHeight || 800;
+  const isMobile = vw <= 900;
+
+  let maxW = 520;
+  let maxH = 540;
+  let targetArea = 350 * 490;
+
+  if (isMobile) {
+    if (state.mobileTab === 'style' || state.mobileTab === 'edit') {
+      // Compact live preview in the top split pane
+      const panePct = state.mobileTab === 'style' ? 0.31 : 0.27;
+      maxW = Math.max(160, vw - 48);
+      maxH = Math.max(140, Math.round(vh * panePct));
+      targetArea = maxW * maxH * 0.72;
+    } else {
+      // Full mobile Preview stage (leave space for header, toolbar, strip & bottom nav)
+      maxW = Math.max(200, Math.min(vw - 44, 420));
+      maxH = Math.max(220, Math.min(vh - 285, 500));
+      targetArea = maxW * maxH * 0.78;
+    }
+  }
+
   let pw = Math.sqrt(targetArea * ratio);
   let ph = pw / ratio;
   if (pw > maxW) {
@@ -174,8 +196,8 @@ function getActiveDimensions() {
     width,
     height,
     label,
-    previewWidth: Math.max(140, Math.round(pw)),
-    previewHeight: Math.max(140, Math.round(ph))
+    previewWidth: Math.max(96, Math.round(pw)),
+    previewHeight: Math.max(96, Math.round(ph))
   };
 }
 
@@ -549,13 +571,24 @@ const storyStrip = document.getElementById('story-strip');
 const cardIndicator = document.getElementById('card-indicator');
 const cardsCountInfo = document.getElementById('cards-count-info');
 
-// Zoom controls
+// Zoom & Swap controls
 const zoomControls = document.getElementById('zoom-controls');
 const zoomRange = document.getElementById('zoom-range');
 const zoomValue = document.getElementById('zoom-value');
 const btnZoomIn = document.getElementById('btn-zoom-in');
 const btnZoomOut = document.getElementById('btn-zoom-out');
 const btnZoomReset = document.getElementById('btn-zoom-reset');
+const btnSwapMode = document.getElementById('btn-swap-mode');
+const swapModeBanner = document.getElementById('swap-mode-banner');
+const btnCancelSwap = document.getElementById('btn-cancel-swap');
+
+// Mobile Navigation Elements
+const appContainer = document.getElementById('app-container');
+const mobileBottomNav = document.getElementById('mobile-bottom-nav');
+const mobileBadgeCards = document.getElementById('mobile-badge-cards');
+const mobileBadgePhotos = document.getElementById('mobile-badge-photos');
+const btnMobileGoPreview = document.getElementById('btn-mobile-go-preview');
+const deckWrapper = document.getElementById('deck-wrapper');
 
 // Settings
 const selectCollection = document.getElementById('select-collection');
@@ -822,6 +855,65 @@ function init() {
     resetSelectedSlotTransform();
   });
 
+  if (btnSwapMode) {
+    btnSwapMode.addEventListener('click', toggleSwapMode);
+  }
+  if (btnCancelSwap) {
+    btnCancelSwap.addEventListener('click', cancelSwapMode);
+  }
+
+  // Mobile Bottom Nav Tabs
+  if (mobileBottomNav) {
+    mobileBottomNav.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mobile-nav-btn');
+      if (!btn) return;
+      setMobileTab(btn.dataset.tab);
+    });
+  }
+
+  if (btnMobileGoPreview) {
+    btnMobileGoPreview.addEventListener('click', () => setMobileTab('preview'));
+  }
+
+  // Sync active card indicator when swiping horizontally on mobile
+  if (deckWrapper) {
+    let scrollSyncTimer = null;
+    deckWrapper.addEventListener('scroll', () => {
+      if (window.innerWidth > 900 || state.cards.length === 0) return;
+      clearTimeout(scrollSyncTimer);
+      scrollSyncTimer = setTimeout(() => {
+        const wrappers = Array.from(document.querySelectorAll('.story-card-wrapper'));
+        if (!wrappers.length) return;
+        const centerX = deckWrapper.getBoundingClientRect().left + deckWrapper.clientWidth / 2;
+        let closestIdx = state.activeCardIndex;
+        let minDist = Infinity;
+        wrappers.forEach((w, idx) => {
+          const rect = w.getBoundingClientRect();
+          const dist = Math.abs((rect.left + rect.width / 2) - centerX);
+          if (dist < minDist) {
+            minDist = dist;
+            closestIdx = idx;
+          }
+        });
+        if (closestIdx !== state.activeCardIndex) {
+          state.activeCardIndex = closestIdx;
+          cardIndicator.textContent = `Card ${closestIdx + 1} of ${state.cards.length}`;
+          wrappers.forEach((el, i) => el.classList.toggle('active-card', i === closestIdx));
+          document.querySelectorAll('.strip-item').forEach((el, i) => el.classList.toggle('active', i === closestIdx));
+        }
+      }, 90);
+    }, { passive: true });
+  }
+
+  // Re-fit previews cleanly on resize or phone rotation
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      renderAllCards();
+    }, 150);
+  });
+
   // Global mouse handlers for pan & cross-card swap
   window.addEventListener('mousemove', handleGlobalMouseMove);
   window.addEventListener('mouseup', handleGlobalMouseUp);
@@ -838,11 +930,92 @@ function init() {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'ArrowLeft') setActiveCard(state.activeCardIndex - 1);
     if (e.key === 'ArrowRight') setActiveCard(state.activeCardIndex + 1);
-    if (e.key === 'Escape' && !templateModal.hidden) closeTemplateModal();
+    if (e.key === 'Escape') {
+      if (!templateModal.hidden) closeTemplateModal();
+      if (state.swapSource) cancelSwapMode();
+    }
   });
 
   // Load sample photos on start
   loadSamplePhotos();
+}
+
+/**
+ * Mobile Tab Switching & Badge Sync
+ */
+function setMobileTab(tab) {
+  state.mobileTab = tab;
+  if (appContainer) {
+    appContainer.dataset.mobileTab = tab;
+  }
+  if (mobileBottomNav) {
+    mobileBottomNav.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+  }
+  if (tab !== 'photos') {
+    // Wait a frame so flex container settles, then render cards at updated responsive dimensions
+    requestAnimationFrame(() => {
+      renderAllCards();
+    });
+  }
+}
+
+function updateMobileBadges() {
+  if (mobileBadgePhotos) mobileBadgePhotos.textContent = state.photos.length;
+  if (mobileBadgeCards) mobileBadgeCards.textContent = state.cards.length;
+  if (btnMobileGoPreview) {
+    btnMobileGoPreview.textContent = state.cards.length > 0
+      ? `View Collages (${state.cards.length} cards) →`
+      : 'View Collages →';
+  }
+}
+
+/**
+ * Tap-to-Swap Mode (ideal for mobile & quick desktop swapping across cards)
+ */
+function toggleSwapMode() {
+  if (state.swapSource) {
+    cancelSwapMode();
+    return;
+  }
+  if (!state.selectedSlot) {
+    showToast('Tap a photo first to swap it');
+    return;
+  }
+  state.swapSource = { ...state.selectedSlot };
+  if (btnSwapMode) btnSwapMode.classList.add('active');
+  if (swapModeBanner) swapModeBanner.hidden = false;
+  showToast('Tap any other photo (same or another card) to swap');
+}
+
+function cancelSwapMode() {
+  state.swapSource = null;
+  if (btnSwapMode) btnSwapMode.classList.remove('active');
+  if (swapModeBanner) swapModeBanner.hidden = true;
+}
+
+function performSlotSwap(fromCardIdx, fromSlotIdx, toCardIdx, toSlotIdx) {
+  const fromCard = state.cards[fromCardIdx];
+  const toCard = state.cards[toCardIdx];
+  if (!fromCard || !toCard) return;
+
+  const tempId = toCard.photoIds[toSlotIdx];
+  toCard.photoIds[toSlotIdx] = fromCard.photoIds[fromSlotIdx];
+  fromCard.photoIds[fromSlotIdx] = tempId;
+
+  const tfFrom = getSlotTransform(fromCard, fromSlotIdx);
+  const tfTo = getSlotTransform(toCard, toSlotIdx);
+  const tempTf = { ...tfTo };
+  toCard.slotTransforms[toSlotIdx] = { ...tfFrom };
+  fromCard.slotTransforms[fromSlotIdx] = tempTf;
+
+  renderCardByIndex(fromCardIdx);
+  if (fromCardIdx !== toCardIdx) {
+    renderCardByIndex(toCardIdx);
+  }
+  selectSlot(toCardIdx, toSlotIdx);
+  showToast(`Swapped photo to Story ${toCardIdx + 1}`);
 }
 
 /**
@@ -891,6 +1064,11 @@ async function loadFiles(files) {
   updateThumbnails();
   partitionPhotosIntoCards();
   showToast(`Added ${loaded.length} photos (${state.photos.length} total)`);
+
+  // On mobile, jump straight to Preview so the user immediately sees their generated collages
+  if (window.innerWidth <= 900 && state.mobileTab === 'photos') {
+    setMobileTab('preview');
+  }
 }
 
 function clearAllPhotos() {
@@ -898,6 +1076,7 @@ function clearAllPhotos() {
   state.cards = [];
   state.activeCardIndex = 0;
   state.selectedSlot = null;
+  cancelSwapMode();
   updateZoomToolbar();
   updateThumbnails();
   renderAllCards();
@@ -909,6 +1088,7 @@ function clearAllPhotos() {
  */
 function updateThumbnails() {
   thumbnailStrip.innerHTML = '';
+  updateMobileBadges();
   if (state.photos.length === 0) {
     photoSummary.style.display = 'none';
     return;
@@ -1404,6 +1584,7 @@ function renderAllCards() {
   storyStrip.innerHTML = '';
 
   const totalCards = state.cards.length;
+  updateMobileBadges();
   cardsCountInfo.textContent = `${totalCards} ${totalCards === 1 ? 'card' : 'cards'} generated (${state.photos.length} photos)`;
   cardIndicator.textContent = totalCards > 0 ? `Card ${state.activeCardIndex + 1} of ${totalCards}` : '0 of 0';
 
@@ -1604,10 +1785,21 @@ function positionIndicatorOnContainer(el, slot, container) {
  * Canvas Drag, Pan, Zoom, and Cross-Card Swap Interaction
  */
 function attachCanvasListeners(canvas, cardIndex) {
-  // Click & Drag inside frame
+  // Desktop Mouse: Click, Swap, Pan & Drag across cards
   canvas.addEventListener('mousedown', (e) => {
     const slotIdx = getSlotAtCoords(canvas, cardIndex, e.clientX, e.clientY);
     if (slotIdx === -1) return;
+
+    // If tap-to-swap mode is active, swap immediately
+    if (state.swapSource) {
+      const src = state.swapSource;
+      cancelSwapMode();
+      if (src.cardIndex !== cardIndex || src.slotIndex !== slotIdx) {
+        performSlotSwap(src.cardIndex, src.slotIndex, cardIndex, slotIdx);
+      }
+      e.preventDefault();
+      return;
+    }
 
     selectSlot(cardIndex, slotIdx);
 
@@ -1660,6 +1852,137 @@ function attachCanvasListeners(canvas, cardIndex) {
     renderCardByIndex(cardIndex);
     showToast('Reset frame zoom');
   });
+
+  // Touch Support (Mobile & Tablet): Tap to select/swap, Double-tap reset, Pinch to zoom, 1-finger pan
+  let touchState = null;
+  let lastTapTime = 0;
+  let lastTapSlot = -1;
+
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const midX = (t1.clientX + t2.clientX) / 2;
+      const midY = (t1.clientY + t2.clientY) / 2;
+      const slotIdx = getSlotAtCoords(canvas, cardIndex, midX, midY);
+      if (slotIdx === -1) return;
+
+      selectSlot(cardIndex, slotIdx);
+      const tf = getSlotTransform(state.cards[cardIndex], slotIdx);
+      touchState = {
+        type: 'pinch',
+        slotIdx,
+        startDist: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1,
+        initialZoom: tf.zoom || 1.0
+      };
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const slotIdx = getSlotAtCoords(canvas, cardIndex, t.clientX, t.clientY);
+      if (slotIdx === -1) return;
+
+      const isAlreadySelected =
+        state.selectedSlot &&
+        state.selectedSlot.cardIndex === cardIndex &&
+        state.selectedSlot.slotIndex === slotIdx;
+
+      const tf = getSlotTransform(state.cards[cardIndex], slotIdx);
+      touchState = {
+        type: 'single',
+        slotIdx,
+        startX: t.clientX,
+        startY: t.clientY,
+        moved: false,
+        canPan: isAlreadySelected || (tf.zoom || 1.0) > 1.0,
+        initialPanX: tf.panX || 0,
+        initialPanY: tf.panY || 0
+      };
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (!touchState) return;
+
+    if (touchState.type === 'pinch' && e.touches.length === 2) {
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const scale = dist / touchState.startDist;
+      const card = state.cards[cardIndex];
+      if (!card) return;
+      const tf = getSlotTransform(card, touchState.slotIdx);
+      tf.zoom = Math.max(1.0, Math.min(5.0, touchState.initialZoom * scale));
+      updateZoomToolbar();
+      renderCardByIndex(cardIndex);
+      return;
+    }
+
+    if (touchState.type === 'single' && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - touchState.startX;
+      const dy = t.clientY - touchState.startY;
+      if (Math.hypot(dx, dy) > 6) {
+        touchState.moved = true;
+      }
+
+      // Pan the photo when it is already selected or zoomed in
+      if (touchState.canPan && touchState.moved) {
+        e.preventDefault();
+        const card = state.cards[cardIndex];
+        if (!card) return;
+        const tf = getSlotTransform(card, touchState.slotIdx);
+        const sensitivity = 0.0038 / (tf.zoom || 1.0);
+        tf.panX = Math.max(-0.5, Math.min(0.5, touchState.initialPanX - dx * sensitivity));
+        tf.panY = Math.max(-0.5, Math.min(0.5, touchState.initialPanY - dy * sensitivity));
+        renderCardByIndex(cardIndex);
+      }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    if (!touchState) return;
+
+    if (touchState.type === 'single' && !touchState.moved) {
+      const slotIdx = touchState.slotIdx;
+      const now = Date.now();
+
+      // Tap-to-swap mode active
+      if (state.swapSource) {
+        const src = state.swapSource;
+        cancelSwapMode();
+        if (src.cardIndex !== cardIndex || src.slotIndex !== slotIdx) {
+          performSlotSwap(src.cardIndex, src.slotIndex, cardIndex, slotIdx);
+        }
+        e.preventDefault();
+        touchState = null;
+        return;
+      }
+
+      // Double-tap resets zoom & pan
+      if (lastTapSlot === slotIdx && (now - lastTapTime) < 300) {
+        const card = state.cards[cardIndex];
+        const tf = getSlotTransform(card, slotIdx);
+        tf.zoom = 1.0;
+        tf.panX = 0;
+        tf.panY = 0;
+        updateZoomToolbar();
+        renderCardByIndex(cardIndex);
+        showToast('Reset frame zoom');
+        lastTapTime = 0;
+        lastTapSlot = -1;
+      } else {
+        selectSlot(cardIndex, slotIdx);
+        lastTapTime = now;
+        lastTapSlot = slotIdx;
+      }
+      e.preventDefault();
+    }
+
+    if (e.touches.length === 0) {
+      touchState = null;
+    }
+  }, { passive: false });
 }
 
 function getSlotAtCoords(canvas, cardIndex, clientX, clientY) {
